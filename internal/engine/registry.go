@@ -12,6 +12,8 @@ func NewRunner(command string, _ ExecRequest) (Runner, error) {
 		return NewClaudeRunner(), nil
 	case command == "codex":
 		return NewCodexRunner(), nil
+	case command == "opencode":
+		return NewPtyRunner(), nil
 	default:
 		return NewPtyRunner(), nil
 	}

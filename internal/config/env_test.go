@@ -14,6 +14,8 @@ func TestFromEnv(t *testing.T) {
 		"MYTOOL_MTLS",
 		"MYTOOL_LOG_LEVEL",
 		"MYTOOL_DEFAULT_COMMAND",
+		"MYTOOL_DEFAULT_ARGS",
+		"MOBILECODING_PORT",
 	}
 	for _, k := range keys {
 		orig, had := os.LookupEnv(k)
@@ -54,5 +56,25 @@ func TestFromEnv(t *testing.T) {
 	}
 	if got.DefaultCmd != "codex" {
 		t.Errorf("DefaultCmd = %q, want codex", got.DefaultCmd)
+	}
+}
+
+func TestFromEnvMobilecodingPrefix(t *testing.T) {
+	keys := []string{"MOBILECODING_PORT", "MYTOOL_PORT"}
+	for _, k := range keys {
+		orig, had := os.LookupEnv(k)
+		if had {
+			t.Cleanup(func() { _ = os.Setenv(k, orig) })
+		} else {
+			t.Cleanup(func() { _ = os.Unsetenv(k) })
+		}
+		_ = os.Unsetenv(k)
+	}
+
+	os.Setenv("MOBILECODING_PORT", "8444")
+	os.Setenv("MYTOOL_PORT", "8443")
+	got := FromEnv()
+	if got.Port != "8444" {
+		t.Errorf("new prefix should win: Port = %q, want 8444", got.Port)
 	}
 }

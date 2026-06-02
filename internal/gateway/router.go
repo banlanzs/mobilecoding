@@ -1,4 +1,4 @@
-// Package gateway 提供 mytool HTTP 入口：healthz/version/SPA + REST 占位 + WS 升级。
+// Package gateway 提供 mobilecoding HTTP 入口：healthz/version/SPA + REST 占位 + WS 升级。
 package gateway
 
 import (
@@ -14,13 +14,15 @@ import (
 )
 
 type Dependencies struct {
-	FS        fs.FS
-	Version   string
-	WS        *ws.Handler
-	Session   *session.Manager
-	Workspace string   // 用于 skill 列表
-	StoreDir  string   // 用于 memory 读写
-	CA        *auth.CA // 用于设备证书签发
+	FS          fs.FS
+	Version     string
+	WS          *ws.Handler
+	Session     *session.Manager
+	Workspace   string   // 用于 skill 列表
+	StoreDir    string   // 用于 memory 读写
+	CA          *auth.CA // 用于设备证书签发
+	DefaultCmd  string
+	DefaultArgs []string
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -32,7 +34,13 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 	})
 	r.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"` + deps.Version + `"}`))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"version": deps.Version,
+			"runtime": map[string]any{
+				"defaultCommand": deps.DefaultCmd,
+				"defaultArgs":    deps.DefaultArgs,
+			},
+		})
 	})
 
 	r.With(func(next http.Handler) http.Handler {

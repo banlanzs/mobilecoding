@@ -2,12 +2,21 @@
   "name": "@banlan/mobilecoding",
   "version": "0.1.0",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
-  "bin": { "mytool": "bin/mytool.js" },
-  "files": ["bin/", "dist/"],
-  "keywords": ["ai", "cli", "claude", "codex", "remote"],
+  "main": "bin/mytool.js",
+  "bin": { "mobilecoding": "bin/mytool.js" },
+  "files": ["bin/", "dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "go build -o dist/mobilecoding.exe ./cmd/server",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["ai", "cli", "claude", "codex", "remote", "mobile", "pwa"],
+  "author": "banlanzs",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/banlanzs/mobilecoding"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -122,6 +122,11 @@ export interface UserMessage {
 export type DisplayMessage = AppEvent | UserMessage;
 
 // RPC 方法参数
+export interface RuntimeConfig {
+  defaultCommand: string;
+  defaultArgs: string[];
+}
+
 export interface SessionStartParams {
   command: string;
   args?: string[];

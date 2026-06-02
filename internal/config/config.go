@@ -7,6 +7,33 @@ import (
 	"path/filepath"
 )
 
+// SplitArgs 简单解析 shell 风格的参数字符串，支持单/双引号。
+func SplitArgs(raw string) []string {
+	var out []string
+	var cur []byte
+	var quote byte
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote == 0 && (c == '\'' || c == '"'):
+			quote = c
+		case quote == 0 && c <= ' ':
+			if len(cur) > 0 {
+				out = append(out, string(cur))
+				cur = nil
+			}
+		default:
+			cur = append(cur, c)
+		}
+	}
+	if len(cur) > 0 {
+		out = append(out, string(cur))
+	}
+	return out
+}
+
 // Config 汇总运行时所有可配置项。字段语义见 spec §8.5。
 type Config struct {
 	Port          string
@@ -39,15 +66,15 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.Workspace == "" {
 		home, _ := os.UserHomeDir()
-		c.Workspace = filepath.Join(home, "mytool-workspace")
+		c.Workspace = filepath.Join(home, "mobilecoding-workspace")
 	}
 	if c.AuthDir == "" {
 		home, _ := os.UserHomeDir()
-		c.AuthDir = filepath.Join(home, ".mytool", "auth")
+		c.AuthDir = filepath.Join(home, ".mobilecoding", "auth")
 	}
 	if c.StoreDir == "" {
 		home, _ := os.UserHomeDir()
-		c.StoreDir = filepath.Join(home, ".mytool", "store")
+		c.StoreDir = filepath.Join(home, ".mobilecoding", "store")
 	}
 	if c.WatchdogWarn1 == "" {
 		c.WatchdogWarn1 = "60s"
@@ -65,12 +92,13 @@ func (c Config) WithDefaults() Config {
 func Load() (Config, error) {
 	env := FromEnv()
 	c := Config{
-		Port:       env.Port,
-		AuthToken:  env.AuthToken,
-		Workspace:  env.Workspace,
-		MTLS:       env.MTLS,
-		LogLevel:   env.LogLevel,
-		DefaultCmd: env.DefaultCmd,
+		Port:        env.Port,
+		AuthToken:   env.AuthToken,
+		Workspace:   env.Workspace,
+		MTLS:        env.MTLS,
+		LogLevel:    env.LogLevel,
+		DefaultCmd:  env.DefaultCmd,
+		DefaultArgs: SplitArgs(env.DefaultArgs),
 	}.WithDefaults()
 	return c, nil
 }

@@ -10,7 +10,7 @@ export function TerminalPage() {
   const { state } = useChat();
 
   // 没有 token 时显示提示
-  const hasToken = !!localStorage.getItem('mytool.token');
+  const hasToken = !!localStorage.getItem('mobilecoding.token');
   if (!hasToken) {
     return (
       <div className="terminal">
@@ -21,7 +21,7 @@ export function TerminalPage() {
             <br />
             或在 URL 后添加 <code>?token=你的令牌</code> 连接。
             <br />
-            也可在 localStorage 中设置 <code>mytool.token</code>。
+            也可在 localStorage 中设置 <code>mobilecoding.token</code>。
           </p>
         </div>
       </div>

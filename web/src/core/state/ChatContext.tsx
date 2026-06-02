@@ -5,6 +5,7 @@ import {
   useReducer,
   useEffect,
   useCallback,
+  useRef,
   type PropsWithChildren,
 } from 'react';
 import { useWebSocket } from '../ws/useWebSocket';
@@ -17,6 +18,7 @@ import type {
   SessionStartParams,
   SessionStartResult,
   PermissionRequestEvent,
+  RuntimeConfig,
 } from '../ws/types';
 
 const MAX_MESSAGES = 500;
@@ -27,10 +29,12 @@ export interface ChatState {
   messages: DisplayMessage[];
   permissionPrompt: PermissionRequestEvent | null;
   lastError: string | null;
+  runtime: RuntimeConfig;
 }
 
 type Action =
   | { type: 'STATUS_CHANGED'; status: ConnectionStatus }
+  | { type: 'RUNTIME_LOADED'; runtime: RuntimeConfig }
   | { type: 'SESSION_STARTED'; sessionId: string }
   | { type: 'SESSION_STOPPED' }
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
@@ -46,6 +50,8 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, sessionId: action.sessionId, lastError: null };
     case 'SESSION_STOPPED':
       return { ...state, sessionId: null, permissionPrompt: null };
+    case 'RUNTIME_LOADED':
+      return { ...state, runtime: action.runtime };
     case 'EVENT_RECEIVED': {
       const ev = action.event;
       const messages = [...state.messages, ev as DisplayMessage];
@@ -90,6 +96,7 @@ const initialState: ChatState = {
   messages: [],
   permissionPrompt: null,
   lastError: null,
+  runtime: { defaultCommand: '', defaultArgs: [] },
 };
 
 interface ChatContextValue {
@@ -106,6 +113,7 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 export function ChatProvider({ children }: PropsWithChildren) {
   const { client, status, connect } = useWebSocket();
   const [state, dispatch] = useReducer(reducer, initialState);
+  const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
 
   // 同步连接状态
   useEffect(() => {
@@ -120,13 +128,44 @@ export function ChatProvider({ children }: PropsWithChildren) {
     return off;
   }, [client]);
 
-  // 自动连接
+  // 自动连接 + 连接后拉取 runtime 配置并自动启动默认 CLI
   useEffect(() => {
     const token = resolveToken();
     if (token) {
       connect(token);
     }
   }, [connect]);
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+    fetch('/version')
+      .then((r) => r.json())
+      .then((data: { runtime?: RuntimeConfig }) => {
+        if (data.runtime) {
+          runtimeRef.current = data.runtime;
+          dispatch({ type: 'RUNTIME_LOADED', runtime: data.runtime });
+        }
+      })
+      .catch(() => {});
+  }, [status]);
+
+  // 连接成功且有 defaultCommand 时自动启动
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (status !== 'connected') {
+      autoStartedRef.current = false;
+      return;
+    }
+    if (state.sessionId || autoStartedRef.current) return;
+    const rc = runtimeRef.current;
+    if (!rc.defaultCommand) return;
+    autoStartedRef.current = true;
+    client.startSession({ command: rc.defaultCommand, args: rc.defaultArgs })
+      .then((r) => dispatch({ type: 'SESSION_STARTED', sessionId: r.sessionId }))
+      .catch(() => {
+        autoStartedRef.current = false;
+      });
+  }, [status, state.sessionId, state.runtime, client]);
 
   const sendStart = useCallback(
     async (params: SessionStartParams): Promise<SessionStartResult> => {
@@ -182,9 +221,9 @@ function resolveToken(): string | null {
   const params = new URLSearchParams(location.search);
   const fromQuery = params.get('token');
   if (fromQuery) {
-    localStorage.setItem('mytool.token', fromQuery);
+    localStorage.setItem('mobilecoding.token', fromQuery);
     history.replaceState(null, '', location.pathname + location.hash);
     return fromQuery;
   }
-  return localStorage.getItem('mytool.token');
+  return localStorage.getItem('mobilecoding.token');
 }

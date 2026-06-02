@@ -40,10 +40,13 @@ func TestVersion(t *testing.T) {
 	if rr.Code != 200 {
 		t.Errorf("status = %d, want 200", rr.Code)
 	}
-	var got map[string]string
+	var got map[string]any
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
 	if got["version"] != "0.1.0" {
 		t.Errorf("version = %q, want 0.1.0", got["version"])
+	}
+	if got["runtime"] == nil {
+		t.Errorf("runtime should be present in /version response")
 	}
 }
 

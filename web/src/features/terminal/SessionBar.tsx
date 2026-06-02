@@ -1,10 +1,11 @@
 // 会话控制栏：command 选择 + start/stop 按钮
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
 const COMMANDS = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
+  { value: 'opencode', label: 'OpenCode' },
   { value: 'aichat', label: 'Aichat' },
 ];
 
@@ -13,10 +14,19 @@ export function SessionBar() {
   const [command, setCommand] = useState('claude');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (state.runtime.defaultCommand) {
+      setCommand(state.runtime.defaultCommand);
+    }
+  }, [state.runtime.defaultCommand]);
+
   const handleStart = async () => {
     setLoading(true);
     try {
-      await sendStart({ command });
+      await sendStart({
+        command,
+        args: command === state.runtime.defaultCommand ? state.runtime.defaultArgs : undefined,
+      });
     } catch (err) {
       console.error('start session failed:', err);
     } finally {

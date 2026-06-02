@@ -1,4 +1,4 @@
-// mytool 后端入口：装配 config + engine + session + gateway + ws，启动 HTTP 服务。
+// mobilecoding 后端入口：装配 config + engine + session + gateway + ws，启动 HTTP 服务。
 package main
 
 import (
@@ -37,7 +37,7 @@ func main() {
 		return
 	}
 	if flags.showHelp {
-		fmt.Fprintln(os.Stderr, "Usage: mytool [flags]\n  -port          listen port (default 8443)")
+		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)")
 		return
 	}
 
@@ -54,7 +54,7 @@ func main() {
 
 	// 日志写入文件 + 清理旧日志
 	home, _ := os.UserHomeDir()
-	logDir := filepath.Join(home, ".mytool", "logs")
+	logDir := filepath.Join(home, ".mobilecoding", "logs")
 	logFile, err := logx.OpenLogFile(logDir)
 	if err == nil {
 		logger = logx.NewWithMultiWriter(os.Stderr, logFile)
@@ -108,12 +108,13 @@ func main() {
 func buildConfig(f serverFlags) (config.Config, error) {
 	env := config.FromEnv()
 	c := config.Config{
-		Port:       firstNonEmpty(f.port, env.Port, "8443"),
-		AuthToken:  firstNonEmpty(f.authToken, env.AuthToken),
-		Workspace:  firstNonEmpty(f.workspace, env.Workspace),
-		MTLS:       firstNonEmpty(f.mtls, env.MTLS),
-		LogLevel:   firstNonEmpty(f.logLevel, env.LogLevel),
-		DefaultCmd: firstNonEmpty(f.defaultCmd, env.DefaultCmd),
+		Port:        firstNonEmpty(f.port, env.Port, "8443"),
+		AuthToken:   firstNonEmpty(f.authToken, env.AuthToken),
+		Workspace:   firstNonEmpty(f.workspace, env.Workspace),
+		MTLS:        firstNonEmpty(f.mtls, env.MTLS),
+		LogLevel:    firstNonEmpty(f.logLevel, env.LogLevel),
+		DefaultCmd:  firstNonEmpty(f.defaultCmd, env.DefaultCmd),
+		DefaultArgs: config.SplitArgs(firstNonEmpty(f.defaultArgs, env.DefaultArgs)),
 	}.WithDefaults()
 
 	if c.AuthToken == "" {
@@ -166,11 +167,13 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	wsHandler := ws.NewHandler(hub, mgr)
 
 	r := gateway.NewRouter(gateway.Dependencies{
-		FS:      staticFS,
-		Version: version,
-		WS:      wsHandler,
-		Session: mgr,
-		CA:      ca,
+		FS:          staticFS,
+		Version:     version,
+		WS:          wsHandler,
+		Session:     mgr,
+		CA:          ca,
+		DefaultCmd:  cfg.DefaultCmd,
+		DefaultArgs: cfg.DefaultArgs,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
