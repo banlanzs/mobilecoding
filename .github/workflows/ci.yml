@@ -1,0 +1,30 @@
+name: CI
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build
+        run: go build -o mytool ./cmd/server
+
+      - name: Smoke test
+        run: |
+          MYTOOL_AUTH_TOKEN=test-ci ./mytool &
+          SERVER_PID=$!
+          sleep 2
+          curl -ks https://127.0.0.1:8443/healthz | grep -q ok
+          kill $SERVER_PID 2>/dev/null || true
