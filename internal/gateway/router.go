@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 
@@ -17,8 +18,9 @@ type Dependencies struct {
 	Version   string
 	WS        *ws.Handler
 	Session   *session.Manager
-	Workspace string // 用于 skill 列表
-	StoreDir  string // 用于 memory 读写
+	Workspace string   // 用于 skill 列表
+	StoreDir  string   // 用于 memory 读写
+	CA        *auth.CA // 用于设备证书签发
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -55,6 +57,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/skills", skillsHandler(deps.Workspace))
 		r.Get("/memory", memoryListHandler(deps.StoreDir))
 		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
+		r.Post("/device-cert", deviceCertHandler(deps.CA))
 	})
 
 	if deps.FS != nil {
@@ -62,4 +65,34 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 	}
 
 	return r
+}
+
+func deviceCertHandler(ca *auth.CA) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ca == nil || ca.PrivateKey == nil {
+			http.Error(w, "CA private key not available", http.StatusServiceUnavailable)
+			return
+		}
+		var req struct {
+			DeviceName string `json:"device_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		if req.DeviceName == "" {
+			http.Error(w, "device_name required", http.StatusBadRequest)
+			return
+		}
+		certPEM, keyPEM, err := auth.IssueDeviceCert(ca, req.DeviceName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"cert": string(certPEM),
+			"key":  string(keyPEM),
+		})
+	}
 }

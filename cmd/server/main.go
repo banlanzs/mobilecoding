@@ -73,7 +73,7 @@ func main() {
 	}
 
 	// 4. Run
-	if err := run(cfg, logger, tlsCfg); err != nil {
+	if err := run(cfg, logger, tlsCfg, ca); err != nil {
 		logger.Error("startup", "run: %v", err)
 		os.Exit(1)
 	}
@@ -105,7 +105,7 @@ func buildConfig(f serverFlags) (config.Config, error) {
 	return c, nil
 }
 
-func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config) error {
+func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA) error {
 	staticFS, err := fs.Sub(webAssets, "web")
 	if err != nil {
 		return fmt.Errorf("embed web: %w", err)
@@ -123,6 +123,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config) error {
 		Version: version,
 		WS:      wsHandler,
 		Session: mgr,
+		CA:      ca,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
