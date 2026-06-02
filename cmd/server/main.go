@@ -50,6 +50,16 @@ func main() {
 	logger := logx.New()
 	logger.SetLevel(parseLevel(cfg.LogLevel))
 
+	// 日志写入文件 + 清理旧日志
+	home, _ := os.UserHomeDir()
+	logDir := filepath.Join(home, ".mytool", "logs")
+	logFile, err := logx.OpenLogFile(logDir)
+	if err == nil {
+		logger = logx.NewWithMultiWriter(os.Stderr, logFile)
+		logger.SetLevel(parseLevel(cfg.LogLevel))
+		_ = logx.CleanOldLogs(logDir, 7)
+	}
+
 	// 3. TLS 准备：生成/加载 CA + server 证书
 	caDir := cfg.AuthDir
 	caPath := filepath.Join(caDir, "ca.crt")
