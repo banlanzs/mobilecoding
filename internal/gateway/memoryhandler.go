@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/jaycrl/mytool/internal/store"
+	"github.com/banlanzs/mobilecoding/internal/store"
 )
 
 func memoryListHandler(storeDir string) http.HandlerFunc {

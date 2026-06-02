@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/jaycrl/mytool/internal/engine"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 )
 
 // Project 把引擎事件翻译为投影事件。深度解析 Claude stream-json。

@@ -1,5 +1,5 @@
 {
-  "name": "@jaycrl/mytool",
+  "name": "@banlan/mytool",
   "version": "0.1.0",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
   "bin": { "mytool": "bin/mytool.js" },
@@ -8,6 +8,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jaycrl/mytool"
+    "url": "https://github.com/banlanzs/mobilecoding"
   }
 }

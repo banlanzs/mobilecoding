@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/jaycrl/mytool/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/session"
 )
 
 func TestNewErrorResp(t *testing.T) {

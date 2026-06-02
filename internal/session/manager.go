@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/jaycrl/mytool/internal/engine"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 )
 
 // Event 是 session 包暴露的最小事件类型（直接转 engine.Event）。

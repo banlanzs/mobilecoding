@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/jaycrl/mytool/internal/store"
+	"github.com/banlanzs/mobilecoding/internal/store"
 )
 
 func skillsHandler(workspace string) http.HandlerFunc {

@@ -1,4 +1,4 @@
-module github.com/jaycrl/mytool
+module github.com/banlanzs/mobilecoding
 
 go 1.22
 

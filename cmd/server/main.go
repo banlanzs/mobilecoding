@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/jaycrl/mytool/internal/auth"
-	"github.com/jaycrl/mytool/internal/config"
-	"github.com/jaycrl/mytool/internal/gateway"
-	"github.com/jaycrl/mytool/internal/logx"
-	"github.com/jaycrl/mytool/internal/session"
-	"github.com/jaycrl/mytool/internal/ws"
+	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/config"
+	"github.com/banlanzs/mobilecoding/internal/gateway"
+	"github.com/banlanzs/mobilecoding/internal/logx"
+	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
 const version = "0.1.0"

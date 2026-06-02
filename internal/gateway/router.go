@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/jaycrl/mytool/internal/auth"
-	"github.com/jaycrl/mytool/internal/session"
-	"github.com/jaycrl/mytool/internal/ws"
+	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
 type Dependencies struct {

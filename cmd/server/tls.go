@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jaycrl/mytool/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/auth"
 )
 
 // buildTLSConfig 根据 mtls 模式构造 *tls.Config。

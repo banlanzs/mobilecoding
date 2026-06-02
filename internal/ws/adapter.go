@@ -3,7 +3,7 @@ package ws
 import (
 	"encoding/json"
 
-	"github.com/jaycrl/mytool/internal/projection"
+	"github.com/banlanzs/mobilecoding/internal/projection"
 )
 
 // projectionToEnvelope 把 projection.Event 包装为 ws.Envelope（evt 类型）。

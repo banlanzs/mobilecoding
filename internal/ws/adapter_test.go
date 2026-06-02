@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/jaycrl/mytool/internal/projection"
+	"github.com/banlanzs/mobilecoding/internal/projection"
 )
 
 func TestProjectionToEnvelope(t *testing.T) {

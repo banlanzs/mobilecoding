@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jaycrl/mytool/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/auth"
 )
 
 func TestTLSConfig_OptionalMode(t *testing.T) {

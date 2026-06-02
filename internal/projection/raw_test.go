@@ -3,7 +3,7 @@ package projection
 import (
 	"testing"
 
-	"github.com/jaycrl/mytool/internal/engine"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 )
 
 func TestProjectUsesProvidedSessionID(t *testing.T) {
