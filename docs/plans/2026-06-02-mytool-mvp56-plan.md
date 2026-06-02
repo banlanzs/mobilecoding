@@ -160,7 +160,7 @@ git add mytool/cmd/server/ && git commit -m "feat(config): 配置热重载（SIG
 
 ```json
 {
-  "name": "@banlan/mytool",
+  "name": "@banlan/mobilecoding",
   "version": "0.1.0",
   "description": "AI CLI 远程控制台",
   "bin": { "mytool": "bin/mytool.js" },

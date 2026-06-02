@@ -1,5 +1,5 @@
 {
-  "name": "@banlan/mytool",
+  "name": "@banlan/mobilecoding",
   "version": "0.1.0",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
   "bin": { "mytool": "bin/mytool.js" },
