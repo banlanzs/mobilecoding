@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mytool</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>mytool</h1>
+    <span id="conn-status">offline</span>
+  </header>
+  <main>
+    <section id="login">
+      <h2>Connect</h2>
+      <input id="token" type="password" placeholder="auth token" />
+      <button id="connect">Connect</button>
+    </section>
+    <section id="session" hidden>
+      <h2>Session</h2>
+      <div>
+        <input id="cmd" placeholder="command (e.g. echo)" />
+        <input id="args" placeholder="args (comma-separated)" />
+        <button id="start">Start</button>
+      </div>
+      <pre id="output"></pre>
+      <div>
+        <input id="input" placeholder="stdin line" />
+        <button id="send">Send</button>
+        <button id="stop">Stop</button>
+      </div>
+    </section>
+  </main>
+  <script src="/main.js"></script>
+</body>
+</html>

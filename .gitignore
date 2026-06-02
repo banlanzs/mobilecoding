@@ -1,0 +1,24 @@
+# 凭据（绝不入库）
+.env
+*.pem
+*.key
+*.p12
+*.crt
+
+# 构建产物
+bin/
+dist/
+mytool-*
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 测试
+*.test
+*.out
+coverage.out
