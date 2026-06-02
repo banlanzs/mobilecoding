@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import { HashRouter, Routes, Route, Link } from 'react-router-dom'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
+import { SkillListPage } from './features/skills/SkillListPage'
+import { MemoryListPage } from './features/memory/MemoryListPage'
 import './App.css'
 
-function App() {
+function HomePage() {
   const [count, setCount] = useState(0)
 
   return (
@@ -116,6 +119,23 @@ function App() {
       <div className="ticks"></div>
       <section id="spacer"></section>
     </>
+  )
+}
+
+function App() {
+  return (
+    <HashRouter>
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="/skills" style={{ marginLeft: 12 }}>Skills</Link>
+        <Link to="/memory" style={{ marginLeft: 12 }}>Memory</Link>
+      </nav>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/skills" element={<SkillListPage />} />
+        <Route path="/memory" element={<MemoryListPage />} />
+      </Routes>
+    </HashRouter>
   )
 }
 
