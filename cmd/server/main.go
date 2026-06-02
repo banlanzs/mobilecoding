@@ -9,7 +9,9 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/jaycrl/mytool/internal/auth"
 	"github.com/jaycrl/mytool/internal/config"
@@ -129,7 +131,28 @@ func buildConfig(f serverFlags) (config.Config, error) {
 	return c, nil
 }
 
+func handleConfigReload(cfg *config.Config, logger *logx.Logger) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP)
+	go func() {
+		for range sig {
+			newCfg, err := config.Load()
+			if err != nil {
+				logger.Error("reload", "failed to reload config: %v", err)
+				continue
+			}
+			// 更新可热重载的配置
+			cfg.LogLevel = newCfg.LogLevel
+			logger.SetLevel(parseLevel(cfg.LogLevel))
+			logger.Info("reload", "config reloaded (log level: %s)", cfg.LogLevel)
+		}
+	}()
+}
+
 func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA) error {
+	// 启动配置热重载（SIGHUP）
+	handleConfigReload(&cfg, logger)
+
 	staticFS, err := fs.Sub(webAssets, "web")
 	if err != nil {
 		return fmt.Errorf("embed web: %w", err)

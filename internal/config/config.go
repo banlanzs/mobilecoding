@@ -61,6 +61,20 @@ func (c Config) WithDefaults() Config {
 	return c
 }
 
+// Load 从环境变量重新加载配置，返回带默认值的 Config。
+func Load() (Config, error) {
+	env := FromEnv()
+	c := Config{
+		Port:       env.Port,
+		AuthToken:  env.AuthToken,
+		Workspace:  env.Workspace,
+		MTLS:       env.MTLS,
+		LogLevel:   env.LogLevel,
+		DefaultCmd: env.DefaultCmd,
+	}.WithDefaults()
+	return c, nil
+}
+
 // Validate 检查必填项。
 func (c Config) Validate() error {
 	if c.Port == "" {
