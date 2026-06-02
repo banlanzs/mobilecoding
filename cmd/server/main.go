@@ -72,6 +72,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 打印二维码供客户端扫码配对
+	if err := auth.PrintQRCode(fmt.Sprintf("https://%s:%s/?token=%s", auth.GetLocalIP(), cfg.Port, cfg.AuthToken)); err != nil {
+		logger.Warn("startup", "print QR code failed: %v", err)
+	}
+
 	// 4. Run
 	if err := run(cfg, logger, tlsCfg, ca); err != nil {
 		logger.Error("startup", "run: %v", err)
