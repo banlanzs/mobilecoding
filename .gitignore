@@ -7,6 +7,8 @@
 
 # 构建产物
 dist/
+web/dist/
+cmd/server/web/
 mytool-*
 *.exe
 

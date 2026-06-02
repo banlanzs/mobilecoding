@@ -1,0 +1,573 @@
+/* 终端界面暗色主题 — mobile-first */
+.terminal {
+  height: 100dvh;
+  height: 100svh; /* fallback */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1a1b26;
+  color: #a9b1d6;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+/* 连接状态栏 */
+.conn-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #1f2132;
+  border-bottom: 1px solid #3b4261;
+  font-size: 12px;
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.conn-bar[data-status='connected'] .conn-dot {
+  background: #9ece6a;
+  box-shadow: 0 0 4px #9ece6a;
+}
+.conn-bar[data-status='connecting'] .conn-dot,
+.conn-bar[data-status='reconnecting'] .conn-dot {
+  background: #e0af68;
+  animation: pulse 1s infinite;
+}
+.conn-bar[data-status='closed'] .conn-dot,
+.conn-bar[data-status='idle'] .conn-dot {
+  background: #565f89;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.conn-label {
+  color: #565f89;
+}
+
+.conn-bar[data-status='connected'] .conn-label {
+  color: #9ece6a;
+}
+
+.conn-sid {
+  margin-left: auto;
+  color: #3b4261;
+  font-size: 11px;
+}
+
+/* 会话控制栏 */
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1f2132;
+  border-bottom: 1px solid #3b4261;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.session-bar select {
+  background: #24283b;
+  color: #a9b1d6;
+  border: 1px solid #3b4261;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  outline: none;
+}
+
+.session-bar select:focus {
+  border-color: #7aa2f7;
+}
+
+.btn {
+  background: #24283b;
+  color: #a9b1d6;
+  border: 1px solid #3b4261;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+  min-width: 44px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #414868;
+  border-color: #7aa2f7;
+  color: #7aa2f7;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: #565f89;
+}
+
+.btn-danger {
+  color: #f7768e;
+  border-color: #f7768e;
+}
+
+.btn-danger:not(:disabled):hover {
+  background: #3b1f2e;
+}
+
+/* 消息列表 */
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 0;
+}
+
+.message-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+  background: #3b4261;
+  border-radius: 2px;
+}
+
+/* 消息卡片 */
+.card {
+  padding: 6px 12px;
+  border-bottom: 1px solid #1f2132;
+}
+
+.card:last-child {
+  border-bottom: none;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.card-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* 文本卡片 — assistant 消息 */
+.card-text .card-badge {
+  background: rgba(122, 162, 247, 0.15);
+  color: #7aa2f7;
+}
+
+.card-text pre {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c0caf5;
+}
+
+.card-text .card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.card-text .card-actions button {
+  background: none;
+  border: none;
+  color: #565f89;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.card-text .card-actions button:hover {
+  background: #24283b;
+  color: #a9b1d6;
+}
+
+/* 用户消息 */
+.card-user {
+  background: rgba(65, 72, 104, 0.3);
+}
+
+.card-user .card-badge {
+  background: rgba(158, 206, 106, 0.15);
+  color: #9ece6a;
+}
+
+.card-user pre {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  color: #c0caf5;
+}
+
+/* 工具使用卡片 */
+.card-tool {
+  cursor: pointer;
+}
+
+.card-tool .card-badge {
+  background: rgba(187, 154, 247, 0.15);
+  color: #bb9af7;
+}
+
+.card-tool .tool-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #bb9af7;
+}
+
+.card-tool .tool-body {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #1f2132;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.card-tool .tool-body pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 工具结果卡片 */
+.card-result .card-badge {
+  background: rgba(125, 207, 255, 0.15);
+  color: #7dcfff;
+}
+
+.card-result .tool-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #7dcfff;
+}
+
+.card-result .result-body {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #1f2132;
+  border-radius: 4px;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.card-result .result-body pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 生命周期事件 */
+.card-lifecycle .card-badge {
+  background: rgba(86, 95, 137, 0.3);
+  color: #565f89;
+}
+
+.card-lifecycle .lifecycle-msg {
+  font-size: 12px;
+  color: #565f89;
+  font-style: italic;
+}
+
+/* session 事件 */
+.card-session .card-badge {
+  background: rgba(224, 175, 104, 0.15);
+  color: #e0af68;
+}
+
+.card-session .session-msg {
+  font-size: 12px;
+  color: #e0af68;
+}
+
+/* 权限请求 — 高亮 */
+.card-permission .card-badge {
+  background: rgba(247, 118, 142, 0.2);
+  color: #f7768e;
+}
+
+.card-permission .permission-msg {
+  font-size: 13px;
+  color: #c0caf5;
+  margin: 4px 0;
+}
+
+.card-permission .permission-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.card-permission .permission-actions button {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid #3b4261;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.btn-allow {
+  background: #3b4e3b;
+  color: #9ece6a;
+  border-color: #9ece6a !important;
+}
+
+.btn-deny {
+  background: #3b1f2e;
+  color: #f7768e;
+  border-color: #f7768e !important;
+}
+
+/* 计划模式卡片 */
+.card-plan .card-badge {
+  background: rgba(224, 175, 104, 0.15);
+  color: #e0af68;
+}
+
+.card-plan .plan-body {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #1f2132;
+  border-radius: 4px;
+  font-size: 12px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.card-plan .plan-body pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+}
+
+/* 上下文窗口卡片 */
+.card-context .card-badge {
+  background: rgba(158, 206, 106, 0.15);
+  color: #9ece6a;
+}
+
+.ctx-meter {
+  margin-top: 4px;
+  height: 6px;
+  background: #1f2132;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ctx-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #9ece6a, #e0af68, #f7768e);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+/* 输入栏 */
+.input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #1f2132;
+  border-top: 1px solid #3b4261;
+  flex-shrink: 0;
+}
+
+.input-bar textarea {
+  flex: 1;
+  background: #24283b;
+  color: #a9b1d6;
+  border: 1px solid #3b4261;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 16px; /* 防止 iOS 自动缩放 */
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  max-height: 120px;
+  min-height: 44px;
+}
+
+.input-bar textarea:focus {
+  border-color: #7aa2f7;
+}
+
+.input-bar textarea::placeholder {
+  color: #565f89;
+}
+
+.input-bar textarea:disabled {
+  opacity: 0.5;
+}
+
+.input-bar .btn-send {
+  background: #7aa2f7;
+  color: #1a1b26;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+
+.input-bar .btn-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input-bar .btn-send:not(:disabled):hover {
+  background: #89b4fa;
+}
+
+.input-bar .btn-stop {
+  background: transparent;
+  color: #f7768e;
+  border: 1px solid #f7768e;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #565f89;
+  padding: 32px;
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #3b4261;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 未连接状态 */
+.no-token {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  padding: 32px;
+  text-align: center;
+  color: #565f89;
+}
+
+.no-token h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+  color: #c0caf5;
+}
+
+.no-token p {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 320px;
+}
+
+/* 错误消息 */
+.error-msg {
+  color: #f7768e;
+  font-size: 12px;
+  padding: 6px 12px;
+  background: rgba(247, 118, 142, 0.1);
+}
+
+/* 滚动到底部按钮 */
+.scroll-bottom {
+  position: fixed;
+  right: 16px;
+  bottom: 80px;
+  background: #24283b;
+  color: #a9b1d6;
+  border: 1px solid #3b4261;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  z-index: 10;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.scroll-bottom:hover {
+  opacity: 1;
+}
+
+/* 小屏幕适配 */
+@media (max-width: 600px) {
+  .terminal {
+    font-size: 13px;
+  }
+  .session-bar select {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+  .btn {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+}

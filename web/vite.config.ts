@@ -1,8 +1,15 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import path from 'node:path';
+
+const serverOutDir = path.resolve(__dirname, '..', 'cmd', 'server', 'web');
 
 export default defineConfig({
+  build: {
+    outDir: serverOutDir,
+    emptyOutDir: true,
+  },
   plugins: [
     react(),
     VitePWA({
@@ -12,8 +19,8 @@ export default defineConfig({
         name: 'mytool',
         short_name: 'mytool',
         description: 'AI CLI 远程控制台',
-        theme_color: '#222222',
-        background_color: '#f5f5f5',
+        theme_color: '#1a1b26',
+        background_color: '#1a1b26',
         display: 'standalone',
         start_url: '/',
         icons: [
