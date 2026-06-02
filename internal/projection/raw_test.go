@@ -68,3 +68,72 @@ func TestStreamWithSID(t *testing.T) {
 		t.Errorf("SessionIDs should both be sess_stream, got %q / %q", got[0].SessionID, got[1].SessionID)
 	}
 }
+
+func TestProjectClaudeToolUse(t *testing.T) {
+	data := `{"type":"tool_use","name":"Bash","input":{"command":"ls"}}`
+	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
+	got := Project(in, "sess_test")
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Type != EventToolUse {
+		t.Errorf("Type = %q, want tool_use", got[0].Type)
+	}
+	if got[0].ToolName != "Bash" {
+		t.Errorf("ToolName = %q, want Bash", got[0].ToolName)
+	}
+}
+
+func TestProjectClaudeToolResult(t *testing.T) {
+	data := `{"type":"tool_result","name":"Bash","content":"ok"}`
+	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
+	got := Project(in, "sess_test")
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Type != EventToolResult {
+		t.Errorf("Type = %q, want tool_result", got[0].Type)
+	}
+}
+
+func TestProjectClaudePermissionRequest(t *testing.T) {
+	data := `{"type":"permission_request","tool_name":"Bash","prompt":"Allow?"}`
+	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
+	got := Project(in, "sess_test")
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Type != EventPermissionReq {
+		t.Errorf("Type = %q, want permission_request", got[0].Type)
+	}
+	if got[0].ToolName != "Bash" {
+		t.Errorf("ToolName = %q, want Bash", got[0].ToolName)
+	}
+}
+
+func TestProjectClaudeAssistantMessage(t *testing.T) {
+	data := `{"type":"assistant_message","message":"Hello"}`
+	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
+	got := Project(in, "sess_test")
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Type != EventText {
+		t.Errorf("Type = %q, want text", got[0].Type)
+	}
+	if got[0].Text != "Hello" {
+		t.Errorf("Text = %q, want Hello", got[0].Text)
+	}
+}
+
+func TestProjectNonClaudeJSON(t *testing.T) {
+	data := `{"key":"value"}`
+	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
+	got := Project(in, "sess_test")
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Type != EventText {
+		t.Errorf("Type = %q, want text", got[0].Type)
+	}
+}
