@@ -64,6 +64,15 @@ func main() {
 		logger.Error("startup", "load server cert: %v", err)
 		os.Exit(1)
 	}
+	// 证书过期检查 + 轮换
+	rotated, err := auth.RotateServerCert(ca, certPath, keyPath, "127.0.0.1", "localhost")
+	if err != nil {
+		logger.Error("startup", "rotate cert: %v", err)
+		os.Exit(1)
+	}
+	if rotated {
+		logger.Info("startup", "server cert rotated (expired or expiring soon)")
+	}
 	logger.Info("startup", "TLS ready: ca=%s cert=%s key=%s", caPath, certPath, keyPath)
 
 	tlsCfg, err := buildTLSConfig(cfg.MTLS, ca, certPath, keyPath)
