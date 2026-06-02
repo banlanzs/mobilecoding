@@ -13,10 +13,12 @@ import (
 )
 
 type Dependencies struct {
-	FS      fs.FS
-	Version string
-	WS      *ws.Handler
-	Session *session.Manager
+	FS        fs.FS
+	Version   string
+	WS        *ws.Handler
+	Session   *session.Manager
+	Workspace string // 用于 skill 列表
+	StoreDir  string // 用于 memory 读写
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -45,6 +47,15 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		}
 		_ = deps.WS.ServeConn(r.Context(), c)
 	}))
+
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return auth.BearerMiddleware(authToken, next)
+		})
+		r.Get("/skills", skillsHandler(deps.Workspace))
+		r.Get("/memory", memoryListHandler(deps.StoreDir))
+		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
+	})
 
 	if deps.FS != nil {
 		r.Handle("/*", spaHandler(deps.FS))
