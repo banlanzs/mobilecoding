@@ -114,7 +114,7 @@ func buildConfig(f serverFlags) (config.Config, error) {
 		MTLS:        firstNonEmpty(f.mtls, env.MTLS),
 		LogLevel:    firstNonEmpty(f.logLevel, env.LogLevel),
 		DefaultCmd:  firstNonEmpty(f.defaultCmd, env.DefaultCmd),
-		DefaultArgs: config.SplitArgs(firstNonEmpty(f.defaultArgs, env.DefaultArgs)),
+		DefaultArgs: config.SplitArgs(os.ExpandEnv(firstNonEmpty(f.defaultArgs, env.DefaultArgs))),
 	}.WithDefaults()
 
 	if c.AuthToken == "" {

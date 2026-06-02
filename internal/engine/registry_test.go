@@ -1,14 +1,23 @@
 package engine
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestRegistryReturnsPtyForUnknown(t *testing.T) {
 	r, err := NewRunner("aichat", ExecRequest{})
 	if err != nil {
 		t.Fatalf("NewRunner: %v", err)
 	}
-	if _, ok := r.(*PtyRunner); !ok {
-		t.Errorf("unknown command should fall back to PtyRunner, got %T", r)
+	if runtime.GOOS == "windows" {
+		if _, ok := r.(*PipeRunner); !ok {
+			t.Errorf("unknown command on windows should fall back to PipeRunner, got %T", r)
+		}
+	} else {
+		if _, ok := r.(*PtyRunner); !ok {
+			t.Errorf("unknown command should fall back to PtyRunner, got %T", r)
+		}
 	}
 	_ = r.Close()
 }

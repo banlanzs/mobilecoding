@@ -98,7 +98,7 @@ func Load() (Config, error) {
 		MTLS:        env.MTLS,
 		LogLevel:    env.LogLevel,
 		DefaultCmd:  env.DefaultCmd,
-		DefaultArgs: SplitArgs(env.DefaultArgs),
+		DefaultArgs: SplitArgs(os.ExpandEnv(env.DefaultArgs)),
 	}.WithDefaults()
 	return c, nil
 }

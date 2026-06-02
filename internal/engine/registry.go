@@ -1,6 +1,9 @@
 package engine
 
-import "errors"
+import (
+	"errors"
+	"runtime"
+)
 
 // NewRunner 根据 command 返回合适的 Runner 实现。
 func NewRunner(command string, _ ExecRequest) (Runner, error) {
@@ -12,9 +15,10 @@ func NewRunner(command string, _ ExecRequest) (Runner, error) {
 		return NewClaudeRunner(), nil
 	case command == "codex":
 		return NewCodexRunner(), nil
-	case command == "opencode":
-		return NewPtyRunner(), nil
 	default:
+		if runtime.GOOS == "windows" {
+			return NewPipeRunner(), nil
+		}
 		return NewPtyRunner(), nil
 	}
 }

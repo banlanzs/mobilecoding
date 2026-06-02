@@ -7,7 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const readTimeout = 60 * time.Second
+const readTimeout = 300 * time.Second
 const writeTimeout = 10 * time.Second
 const pingInterval = 15 * time.Second
 
@@ -39,6 +39,10 @@ func NewConn(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 		send:   make(chan Envelope, 64),
 		closed: make(chan struct{}),
 	}
+	c.SetPongHandler(func(string) error {
+		c.SetReadDeadline(time.Now().Add(readTimeout))
+		return nil
+	})
 	go conn.writeLoop()
 	go conn.pingLoop()
 	return conn, nil

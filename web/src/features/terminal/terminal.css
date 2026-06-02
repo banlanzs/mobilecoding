@@ -78,6 +78,16 @@
   flex-wrap: wrap;
 }
 
+.session-error {
+  width: 100%;
+  color: #f7768e;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: rgba(247, 118, 142, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(247, 118, 142, 0.3);
+}
+
 .session-bar select {
   background: #24283b;
   color: #a9b1d6;

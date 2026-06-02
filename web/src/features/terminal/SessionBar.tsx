@@ -13,6 +13,7 @@ export function SessionBar() {
   const { state, sendStart, sendStop } = useChat();
   const [command, setCommand] = useState('claude');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (state.runtime.defaultCommand) {
@@ -20,14 +21,20 @@ export function SessionBar() {
     }
   }, [state.runtime.defaultCommand]);
 
+  useEffect(() => {
+    setError(null);
+  }, [command]);
+
   const handleStart = async () => {
     setLoading(true);
+    setError(null);
     try {
       await sendStart({
         command,
         args: command === state.runtime.defaultCommand ? state.runtime.defaultArgs : undefined,
       });
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start');
       console.error('start session failed:', err);
     } finally {
       setLoading(false);
@@ -35,15 +42,18 @@ export function SessionBar() {
   };
 
   const handleStop = async () => {
+    setError(null);
     try {
       await sendStop();
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop');
       console.error('stop session failed:', err);
     }
   };
 
   return (
     <div className="session-bar">
+      {error && <div className="session-error">{error}</div>}
       <select
         value={command}
         onChange={(e) => setCommand(e.target.value)}
