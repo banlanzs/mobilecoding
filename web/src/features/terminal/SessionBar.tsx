@@ -54,10 +54,10 @@ export function SessionBar() {
   }, []);
 
   useEffect(() => {
-    if (state.status === 'connected') {
+    if (state.status === 'connected' && state.connectionMode === 'direct') {
       fetchClaudeSettings();
     }
-  }, [state.status, fetchClaudeSettings]);
+  }, [state.status, state.connectionMode, fetchClaudeSettings]);
 
   const handleStart = async () => {
     setLoading(true);
@@ -91,6 +91,23 @@ export function SessionBar() {
     }
   };
 
+  // Relay 模式下：只显示停止按钮
+  if (state.connectionMode === 'relay') {
+    return (
+      <div className="session-bar relay-mode">
+        {error && <div className="session-error">{error}</div>}
+        <div className="relay-indicator">
+          <span className="relay-dot" />
+          Relay Connected
+        </div>
+        <button className="btn btn-danger" onClick={handleStop}>
+          Disconnect
+        </button>
+      </div>
+    );
+  }
+
+  // Direct 模式：显示完整的 CLI 选择界面
   return (
     <div className="session-bar">
       {error && <div className="session-error">{error}</div>}
