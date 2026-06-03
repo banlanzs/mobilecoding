@@ -15,8 +15,10 @@ import (
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
 	"github.com/banlanzs/mobilecoding/internal/config"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/gateway"
 	"github.com/banlanzs/mobilecoding/internal/logx"
+	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
@@ -169,6 +171,11 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	mgr.SetLogger(logger.Info)
 	wsHandler := ws.NewHandler(hub, mgr, logger)
 
+	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go forwardSessionEvents(ctx, mgr, hub, logger)
+
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,
 		Version:     version,
@@ -183,6 +190,44 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
 	return srv.ListenAndServeTLS("", "")
+}
+
+// forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接
+func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger) {
+	input := mgr.Output()
+	fwdCount := 0
+
+	for {
+		select {
+		case ev, ok := <-input:
+			if !ok {
+				logger.Debug("broadcast", "session output closed, forwarded %d events", fwdCount)
+				return
+			}
+			// 注意：这里不做 projection，因为每个 handler 会自己做 projection
+			// 直接将 engine.Event 包装成某种可序列化的格式
+			// 但是为了保持一致性，我们在这里做 projection
+			sid := mgr.SessionID()
+			projEvents := projection.Project([]engine.Event{ev}, sid)
+			logger.Debug("broadcast", "event kind=%s projected=%d", ev.Kind, len(projEvents))
+
+			for _, pe := range projEvents {
+				env, err := ws.ProjectionToEnvelope(pe)
+				if err != nil {
+					logger.Error("broadcast", "projectionToEnvelope failed: %v", err)
+					continue
+				}
+				hub.Broadcast(env)
+				fwdCount++
+				if fwdCount <= 10 || fwdCount%50 == 0 {
+					logger.Debug("broadcast", "broadcasted envelope #%d type=%s to %d subscribers", fwdCount, pe.Type, hub.SubscriberCount())
+				}
+			}
+		case <-ctx.Done():
+			logger.Debug("broadcast", "context cancelled, forwarded %d events", fwdCount)
+			return
+		}
+	}
 }
 
 func parseLevel(s string) logx.Level {

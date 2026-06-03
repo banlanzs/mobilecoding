@@ -25,9 +25,11 @@ func (h *Handler) ServeConn(ctx context.Context, c *Conn) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	writeCh := make(chan Envelope, 128)
+	// 订阅 Hub 广播
+	subCh := h.hub.Subscribe()
+	defer h.hub.Unsubscribe(subCh)
 
-	// 桥接协程：writeCh → c.send（writeLoop 独占 WebSocket）
+	// 桥接协程：subCh → c.send（writeLoop 独占 WebSocket）
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -35,7 +37,7 @@ func (h *Handler) ServeConn(ctx context.Context, c *Conn) error {
 			select {
 			case <-ctx.Done():
 				return
-			case env, ok := <-writeCh:
+			case env, ok := <-subCh:
 				if !ok {
 					return
 				}
@@ -48,12 +50,10 @@ func (h *Handler) ServeConn(ctx context.Context, c *Conn) error {
 		}
 	}()
 
-	go h.forwardSession(ctx, writeCh)
-
-	// 阻塞发送辅助函数
+	// 阻塞发送辅助函数（发送响应到当前连接）
 	sendResp := func(env Envelope) {
 		select {
-		case writeCh <- env:
+		case c.send <- env:
 		case <-ctx.Done():
 		}
 	}
