@@ -29,7 +29,6 @@ type ClaudeRunner struct {
 	mu        sync.Mutex
 	closed    bool
 	started   bool
-	ctx       context.Context
 	req       ExecRequest
 	logWindow *LogWindow
 
@@ -60,7 +59,6 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	if req.Command == "" {
 		return errors.New("command is required")
 	}
-	r.ctx = ctx
 	r.req = req
 	r.events <- Event{Kind: EventLifecycle, Message: "ready: claude (waiting for first message)"}
 	return nil
@@ -91,7 +89,7 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 	if runtime.GOOS == "windows" {
 		command = resolveWindowsCommand(command)
 	}
-	cmd := exec.CommandContext(r.ctx, command, args...)
+	cmd := exec.CommandContext(context.Background(), command, args...)
 	if r.req.CWD != "" {
 		cmd.Dir = r.req.CWD
 	}

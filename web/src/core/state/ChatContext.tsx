@@ -267,7 +267,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         } catch (err) {
           // 会话已死：自动重置状态
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('no active runner') || msg.includes('engine_failure')) {
+          if (msg.includes('no active runner') || msg.includes('engine_failure') || msg.includes('context canceled')) {
             dispatch({ type: 'SESSION_STOPPED' });
             dispatch({ type: 'ERROR', error: '会话已断开，请重新启动' });
           }
