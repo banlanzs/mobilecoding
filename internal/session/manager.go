@@ -110,7 +110,7 @@ func (m *Manager) forward(run engine.Runner) {
 				m.log("session", "runner stderr: %v", err)
 			}
 		case <-ticker.C:
-			if time.Since(lastActivity) > 120*time.Second {
+			if time.Since(lastActivity) > 300*time.Second {
 				m.log("session", "stall watchdog: killing runner")
 				run.Close()
 				m.mu.Lock()

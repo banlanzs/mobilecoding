@@ -79,11 +79,8 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 	switch typ {
 	case "assistant", "assistant_message":
 		text, thinking := extractClaudeContent(m["message"])
-		// 只显示实际回复文本，跳过纯思考消息
-		if text == "" {
-			return Event{}, errors.New("thinking only, skip")
-		}
 		_ = thinking
+		// 即使只有思考也发送事件（空文本也不跳过，保持 lastActivity 更新防超时）
 		return TextEvent(sid, text), nil
 	case "tool_use":
 		name, _ := m["name"].(string)
