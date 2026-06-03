@@ -119,7 +119,7 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: PropsWithChildren) {
-  const { client, status } = useWebSocket();
+  const { client, status, connect } = useWebSocket();
   const [state, dispatch] = useReducer(reducer, initialState);
   const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
   const relayClientRef = useRef<RelayClient | null>(null);
@@ -136,6 +136,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
     });
     return off;
   }, [client]);
+
+  // 自动连接（direct 模式）
+  useEffect(() => {
+    if (state.connectionMode !== 'direct') return;
+    const token = resolveToken();
+    if (token) {
+      connect(token);
+    }
+  }, [connect, state.connectionMode]);
 
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
@@ -279,3 +288,13 @@ export function useChat(): ChatContextValue {
   return ctx;
 }
 
+function resolveToken(): string | null {
+  const params = new URLSearchParams(location.search);
+  const fromQuery = params.get('token');
+  if (fromQuery) {
+    localStorage.setItem('mobilecoding.token', fromQuery);
+    history.replaceState(null, '', location.pathname + location.hash);
+    return fromQuery;
+  }
+  return localStorage.getItem('mobilecoding.token');
+}
