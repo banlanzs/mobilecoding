@@ -49,9 +49,13 @@ function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
     case 'STATUS_CHANGED':
       return { ...state, status: action.status, lastError: action.status === 'closed' ? state.lastError : null };
-    case 'SESSION_STARTED':
+    case 'SESSION_STARTED': {
+      // 保存到 localStorage 以支持页面刷新恢复
+      try { localStorage.setItem('mobilecoding.sessionId', action.sessionId); } catch {}
       return { ...state, sessionId: action.sessionId, lastError: null };
+    }
     case 'SESSION_STOPPED':
+      try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
       return { ...state, sessionId: null, permissionPrompt: null };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
@@ -95,9 +99,14 @@ function reducer(state: ChatState, action: Action): ChatState {
   }
 }
 
+// 尝试从 localStorage 恢复 sessionId（支持页面刷新）
+function savedSessionId(): string | null {
+  try { return localStorage.getItem('mobilecoding.sessionId'); } catch { return null; }
+}
+
 const initialState: ChatState = {
   status: 'idle',
-  sessionId: null,
+  sessionId: savedSessionId(),
   messages: [],
   permissionPrompt: null,
   lastError: null,
