@@ -6,10 +6,12 @@ import {
   useEffect,
   useCallback,
   useRef,
+  useState,
   type PropsWithChildren,
 } from 'react';
 import { useWebSocket } from '../ws/useWebSocket';
 import type { WSClient } from '../ws/ws-client';
+import { RelayClient, type RelayConfig } from '../ws/relay-client';
 import type {
   ConnectionStatus,
   AppEvent,
@@ -30,6 +32,7 @@ export interface ChatState {
   permissionPrompt: PermissionRequestEvent | null;
   lastError: string | null;
   runtime: RuntimeConfig;
+  connectionMode: 'direct' | 'relay';
 }
 
 type Action =
@@ -40,7 +43,8 @@ type Action =
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
   | { type: 'PERMISSION_ANSWERED' }
-  | { type: 'ERROR'; error: string };
+  | { type: 'ERROR'; error: string }
+  | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
 
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
@@ -52,6 +56,8 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, sessionId: null, permissionPrompt: null };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
+    case 'SET_CONNECTION_MODE':
+      return { ...state, connectionMode: action.mode };
     case 'EVENT_RECEIVED': {
       const ev = action.event;
       const messages = [...state.messages, ev as DisplayMessage];
@@ -97,6 +103,7 @@ const initialState: ChatState = {
   permissionPrompt: null,
   lastError: null,
   runtime: { defaultCommand: '', defaultArgs: [] },
+  connectionMode: 'direct',
 };
 
 interface ChatContextValue {
@@ -106,6 +113,8 @@ interface ChatContextValue {
   sendInput: (text: string) => Promise<void>;
   sendStop: () => Promise<void>;
   dismissPermission: () => void;
+  connectRelay: (config: RelayConfig) => void;
+  disconnectRelay: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -114,6 +123,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { client, status, connect } = useWebSocket();
   const [state, dispatch] = useReducer(reducer, initialState);
   const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
+  const relayClientRef = useRef<RelayClient | null>(null);
 
   // 同步连接状态
   useEffect(() => {
@@ -128,16 +138,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
     return off;
   }, [client]);
 
-  // 自动连接 + 连接后拉取 runtime 配置并自动启动默认 CLI
+  // 自动连接（仅 direct 模式）
   useEffect(() => {
+    if (state.connectionMode !== 'direct') return;
     const token = resolveToken();
     if (token) {
       connect(token);
     }
-  }, [connect]);
+  }, [connect, state.connectionMode]);
 
   useEffect(() => {
-    if (status !== 'connected') return;
+    if (status !== 'connected' || state.connectionMode !== 'direct') return;
     fetch('/version')
       .then((r) => r.json())
       .then((data: { runtime?: RuntimeConfig }) => {
@@ -147,17 +158,58 @@ export function ChatProvider({ children }: PropsWithChildren) {
         }
       })
       .catch(() => {});
-  }, [status]);
+  }, [status, state.connectionMode]);
+
+  // Relay 连接方法
+  const connectRelay = useCallback((config: RelayConfig) => {
+    // 断开现有连接
+    if (relayClientRef.current) {
+      relayClientRef.current.close();
+    }
+
+    const relayClient = new RelayClient();
+    relayClientRef.current = relayClient;
+
+    // 订阅事件
+    relayClient.onEvent((event, sessionId) => {
+      dispatch({ type: 'EVENT_RECEIVED', event, sessionId });
+    });
+
+    relayClient.onStatus((newStatus) => {
+      dispatch({ type: 'STATUS_CHANGED', status: newStatus });
+    });
+
+    // 连接
+    dispatch({ type: 'SET_CONNECTION_MODE', mode: 'relay' });
+    relayClient.connect(config);
+
+    // 在 relay 模式下，session 由 CLI 创建，自动设置 sessionId
+    dispatch({ type: 'SESSION_STARTED', sessionId: config.sessionId });
+  }, []);
+
+  // 断开 Relay 连接
+  const disconnectRelay = useCallback(() => {
+    if (relayClientRef.current) {
+      relayClientRef.current.close();
+      relayClientRef.current = null;
+    }
+    dispatch({ type: 'SESSION_STOPPED' });
+    dispatch({ type: 'SET_CONNECTION_MODE', mode: 'direct' });
+  }, []);
 
   const sendStart = useCallback(
     async (params: SessionStartParams): Promise<SessionStartResult> => {
+      if (state.connectionMode === 'relay') {
+        // Relay 模式下不需要启动 session（CLI 已启动）
+        return { sessionId: state.sessionId || '' };
+      }
       const result = await client.startSession(params);
       if (result.sessionId) {
         dispatch({ type: 'SESSION_STARTED', sessionId: result.sessionId });
       }
       return result;
     },
-    [client]
+    [client, state.connectionMode, state.sessionId]
   );
 
   const sendInput = useCallback(
@@ -165,15 +217,24 @@ export function ChatProvider({ children }: PropsWithChildren) {
       const sid = state.sessionId;
       if (!sid) throw new Error('no active session');
       dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
-      await client.sendInput(text);
+
+      if (state.connectionMode === 'relay' && relayClientRef.current) {
+        relayClientRef.current.sendText(text);
+      } else {
+        await client.sendInput(text);
+      }
     },
-    [client, state.sessionId]
+    [client, state.sessionId, state.connectionMode]
   );
 
   const sendStop = useCallback(async (): Promise<void> => {
-    await client.stopSession();
-    dispatch({ type: 'SESSION_STOPPED' });
-  }, [client]);
+    if (state.connectionMode === 'relay') {
+      disconnectRelay();
+    } else {
+      await client.stopSession();
+      dispatch({ type: 'SESSION_STOPPED' });
+    }
+  }, [client, state.connectionMode, disconnectRelay]);
 
   const dismissPermission = useCallback(() => {
     dispatch({ type: 'PERMISSION_ANSWERED' });
@@ -186,6 +247,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
     sendInput,
     sendStop,
     dismissPermission,
+    connectRelay,
+    disconnectRelay,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
