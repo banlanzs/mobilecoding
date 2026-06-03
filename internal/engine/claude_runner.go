@@ -350,7 +350,7 @@ func formatStreamJSONForLog(line []byte) string {
 		return fmt.Sprintf("[SYSTEM] %s\n", subtype)
 	case "assistant", "assistant_message":
 		msg := m["message"]
-		text := extractAssistantText(msg)
+		text := extractContentBlocks(msg)
 		if text == "" {
 			return ""
 		}
@@ -372,32 +372,41 @@ func formatStreamJSONForLog(line []byte) string {
 	}
 }
 
-func extractAssistantText(message any) string {
+func extractContentBlocks(message any) string {
+	text, _ := extractContentBlocksWithThinking(message)
+	return text
+}
+
+func extractContentBlocksWithThinking(message any) (string, string) {
 	switch v := message.(type) {
 	case string:
-		return v
+		return v, ""
 	case map[string]any:
 		content, ok := v["content"]
 		if !ok {
-			return ""
+			return "", ""
 		}
 		contentArr, ok := content.([]any)
 		if !ok {
-			return ""
+			return "", ""
 		}
-		var parts []string
+		var texts, thinkings []string
 		for _, block := range contentArr {
-			blockMap, ok := block.(map[string]any)
-			if !ok {
+			blockMap, _ := block.(map[string]any)
+			if blockMap == nil {
 				continue
 			}
 			blockType, _ := blockMap["type"].(string)
-			text, _ := blockMap["text"].(string)
-			if blockType == "text" && text != "" {
-				parts = append(parts, text)
+			t, _ := blockMap["text"].(string)
+			th, _ := blockMap["thinking"].(string)
+			if blockType == "text" && t != "" {
+				texts = append(texts, t)
+			}
+			if blockType == "thinking" && th != "" {
+				thinkings = append(thinkings, th)
 			}
 		}
-		return strings.Join(parts, "")
+		return strings.Join(texts, ""), strings.Join(thinkings, "")
 	}
-	return ""
+	return "", ""
 }

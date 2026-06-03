@@ -23,15 +23,26 @@ func Project(in []engine.Event, sid string) []Event {
 			parsed, err := parseClaudeEvent(ev.Data, sid)
 			if err == nil {
 				out = append(out, parsed)
-			} else {
-				// 非 Claude JSON，透传为文本
-				out = append(out, TextEvent(sid, strings.TrimRight(string(ev.Data), "\r\n")))
 			}
+			// 解析失败的事件：不显示（避免原始 JSON 泄露到前端）
 		case engine.EventLifecycle:
-			out = append(out, LifecycleEvent(sid, ev.Message))
+			// 只转发用户可见的生命周期事件
+			if isUserVisibleLifecycle(ev.Message) {
+				out = append(out, LifecycleEvent(sid, ev.Message))
+			}
 		}
 	}
 	return out
+}
+
+// isUserVisibleLifecycle 判断生命周期事件是否应该显示给用户。
+func isUserVisibleLifecycle(msg string) bool {
+	// 隐藏内部状态信息
+	if strings.HasPrefix(msg, "cmd:") || strings.HasPrefix(msg, "ready:") ||
+		strings.HasPrefix(msg, "started:") || strings.HasPrefix(msg, "exited") {
+		return false
+	}
+	return true
 }
 
 // Stream 实时投影：从 input 读 engine.Event，输出 projection.Event。
@@ -67,11 +78,13 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 	typ, _ := m["type"].(string)
 	switch typ {
 	case "assistant", "assistant_message":
-		msg := extractClaudeAssistantText(m["message"])
-		if msg == "" {
-			return Event{}, errors.New("empty assistant message")
+		text, thinking := extractClaudeContent(m["message"])
+		// 只显示实际回复文本，跳过纯思考消息
+		if text == "" {
+			return Event{}, errors.New("thinking only, skip")
 		}
-		return TextEvent(sid, msg), nil
+		_ = thinking
+		return TextEvent(sid, text), nil
 	case "tool_use":
 		name, _ := m["name"].(string)
 		input := m["input"]
@@ -99,22 +112,23 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 	}
 }
 
-// extractClaudeAssistantText 从 Claude assistant_message 的 message 字段提取文本。
-// message 可能是字符串（旧格式）或对象（新格式，含 content 数组）。
-func extractClaudeAssistantText(message any) string {
+// extractClaudeContent 从 assistant_message 提取实际回复文本和思考内容。
+// 返回 (responseText, thinkingText)
+func extractClaudeContent(message any) (string, string) {
 	switch v := message.(type) {
 	case string:
-		return v
+		return v, ""
 	case map[string]any:
 		content, ok := v["content"]
 		if !ok {
-			return ""
+			return "", ""
 		}
 		contentArr, ok := content.([]any)
 		if !ok {
-			return ""
+			return "", ""
 		}
-		var parts []string
+		var responseParts []string
+		var thinkingParts []string
 		for _, block := range contentArr {
 			blockMap, ok := block.(map[string]any)
 			if !ok {
@@ -122,11 +136,16 @@ func extractClaudeAssistantText(message any) string {
 			}
 			blockType, _ := blockMap["type"].(string)
 			text, _ := blockMap["text"].(string)
+			thinking, _ := blockMap["thinking"].(string)
+
 			if blockType == "text" && text != "" {
-				parts = append(parts, text)
+				responseParts = append(responseParts, text)
+			}
+			if blockType == "thinking" && thinking != "" {
+				thinkingParts = append(thinkingParts, thinking)
 			}
 		}
-		return strings.Join(parts, "")
+		return strings.Join(responseParts, ""), strings.Join(thinkingParts, "")
 	}
-	return ""
+	return "", ""
 }
