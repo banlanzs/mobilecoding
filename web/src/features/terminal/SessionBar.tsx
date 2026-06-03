@@ -107,14 +107,27 @@ export function SessionBar() {
     );
   }
 
-  // Direct 模式：显示完整的 CLI 选择界面
+  // 有活跃会话时：只显示 Stop 按钮
+  if (state.sessionId) {
+    return (
+      <div className="session-bar">
+        {error && <div className="session-error">{error}</div>}
+        <span className="session-active">{command} (active)</span>
+        <button className="btn btn-danger" onClick={handleStop}>
+          Stop
+        </button>
+      </div>
+    );
+  }
+
+  // 无会话：显示完整的 CLI 选择界面
   return (
     <div className="session-bar">
       {error && <div className="session-error">{error}</div>}
       <select
         value={command}
         onChange={(e) => setCommand(e.target.value)}
-        disabled={!!state.sessionId || loading}
+        disabled={loading}
       >
         {COMMANDS.map((c) => (
           <option key={c.value} value={c.value}>
@@ -128,7 +141,7 @@ export function SessionBar() {
         <select
           value={selectedSetting}
           onChange={(e) => setSelectedSetting(e.target.value)}
-          disabled={!!state.sessionId || loading}
+          disabled={loading}
           title="选择 Claude 配置文件"
         >
           {claudeSettings.map((s) => (
@@ -139,19 +152,13 @@ export function SessionBar() {
         </select>
       )}
 
-      {!state.sessionId ? (
-        <button
-          className="btn btn-primary"
-          onClick={handleStart}
-          disabled={loading || state.status !== 'connected'}
-        >
-          {loading ? '启动中…' : 'Start'}
-        </button>
-      ) : (
-        <button className="btn btn-danger" onClick={handleStop}>
-          Stop
-        </button>
-      )}
+      <button
+        className="btn btn-primary"
+        onClick={handleStart}
+        disabled={loading || state.status !== 'connected'}
+      >
+        {loading ? '启动中…' : 'Start'}
+      </button>
     </div>
   );
 }
