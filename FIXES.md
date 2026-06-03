@@ -210,7 +210,19 @@ Started at: 2026-06-03 19:47:04
    - 输入 session ID 和 pairing secret
    - 开始远程控制
 
-### 使用 Claude Code Skill
+### 使用方法
+
+**方式 1：使用 mc 快捷命令（推荐）**
+```bash
+# 启动 relay 服务器
+mobilecoding
+
+# 在另一个终端运行
+mc claude    # 启动 claude 并连接 relay
+mc codex     # 启动 codex 并连接 relay
+```
+
+**方式 2：使用 Claude Code Skill**
 
 在 Claude Code 中输入：
 ```
@@ -218,6 +230,15 @@ Started at: 2026-06-03 19:47:04
 ```
 
 Claude 会自动运行 `mobilecoding-relay` 命令并显示配对信息。
+
+**方式 3：手动运行 relay**
+```bash
+# 启动 relay 服务器
+mobilecoding
+
+# 在另一个终端运行
+mobilecoding-relay --relay wss://localhost:8443/relay/agent --insecure
+```
 
 ---
 
