@@ -142,15 +142,21 @@ func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any
 	h.logger.Info("session", "starting: command=%s args=%v cwd=%s", p.Command, p.Args, p.CWD)
 
 	run, err := engine.NewRunner(p.Command, engine.ExecRequest{
-		Command: p.Command,
-		Args:    p.Args,
-		CWD:     p.CWD,
+		Command:         p.Command,
+		Args:            p.Args,
+		CWD:             p.CWD,
+		VisibleTerminal: true, // 在可视化终端中显示 CLI 输出
 	})
 	if err != nil {
 		h.logger.Error("session", "new runner failed: command=%s err=%v", p.Command, err)
 		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
 	}
-	sid, err := h.mgr.Start(ctx, engine.ExecRequest{Command: p.Command, Args: p.Args, CWD: p.CWD}, run)
+	sid, err := h.mgr.Start(ctx, engine.ExecRequest{
+		Command:         p.Command,
+		Args:            p.Args,
+		CWD:             p.CWD,
+		VisibleTerminal: true, // 在可视化终端中显示 CLI 输出
+	}, run)
 	if err != nil {
 		h.logger.Error("session", "start failed: command=%s err=%v", p.Command, err)
 		return newErrorRespPtr(env.ID, "conflict", err.Error()), nil

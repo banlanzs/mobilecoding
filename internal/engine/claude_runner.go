@@ -31,6 +31,7 @@ type ClaudeRunner struct {
 	started   bool
 	ctx       context.Context
 	req       ExecRequest
+	logWindow *LogWindow // 可视化日志窗口（Windows）
 }
 
 func NewClaudeRunner() *ClaudeRunner {
@@ -67,6 +68,19 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 
 // startProcess 启动 claude 子进程并立即写入首条消息。
 func (r *ClaudeRunner) startProcess(firstInput []byte) error {
+	// 如果需要可视化终端，创建日志窗口
+	if r.req.VisibleTerminal {
+		logWin, err := NewLogWindow(r.sessionID)
+		if err != nil {
+			// 日志窗口创建失败不影响核心功能，只记录错误
+			r.errors <- fmt.Errorf("create log window failed (non-fatal): %w", err)
+		} else {
+			r.logWindow = logWin
+			fmt.Fprintf(r.logWindow, "[INFO] Starting Claude CLI...\n")
+			fmt.Fprintf(r.logWindow, "[INFO] Command: %s %v\n\n", r.req.Command, r.req.Args)
+		}
+	}
+
 	// Windows 上需要使用 cmd /c 来启动 npm 安装的命令
 	command := r.req.Command
 	var args []string
@@ -133,6 +147,13 @@ func (r *ClaudeRunner) Write(p []byte) error {
 	if r.closed {
 		return errors.New("runner is closed")
 	}
+
+	// 记录用户输入到日志窗口
+	if r.logWindow != nil && len(p) > 0 {
+		content := strings.TrimRight(string(p), "\r\n")
+		fmt.Fprintf(r.logWindow, "[USER INPUT] %s\n", content)
+	}
+
 	if !r.started {
 		return r.startProcess(p)
 	}
@@ -163,11 +184,18 @@ func (r *ClaudeRunner) Resize(cols, rows int) error {
 
 func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
+
+		// 输出格式化内容到日志窗口
+		if r.logWindow != nil {
+			fmt.Fprint(r.logWindow, formatStreamJSONForLog(line))
+		}
+
 		ev, err := ParseClaudeStreamJSON(line)
 		if err != nil {
 			r.errors <- fmt.Errorf("claude parse: %w", err)
@@ -184,6 +212,79 @@ func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
 	}
 }
 
+// formatStreamJSONForLog 将 Claude stream-json 的单行解析为人类可读的文本。
+func formatStreamJSONForLog(line []byte) string {
+	var m map[string]any
+	if err := json.Unmarshal(line, &m); err != nil {
+		return fmt.Sprintf("[RAW] %s\n", string(line))
+	}
+
+	typ, _ := m["type"].(string)
+	switch typ {
+	case "system":
+		subtype, _ := m["subtype"].(string)
+		if subtype == "hook_started" {
+			return "" // 跳过 hook 启动事件
+		}
+		if subtype == "hook_response" {
+			return "" // 跳过 hook 响应事件
+		}
+		return fmt.Sprintf("[SYSTEM] %s\n", subtype)
+	case "assistant_message":
+		msg := m["message"]
+		text := extractAssistantText(msg)
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("\n🤖 Claude:\n%s\n", text)
+	case "tool_use":
+		name, _ := m["name"].(string)
+		return fmt.Sprintf("🔧 Tool: %s\n", name)
+	case "tool_result":
+		name, _ := m["name"].(string)
+		return fmt.Sprintf("✅ Tool Result: %s\n", name)
+	case "permission_request":
+		toolName, _ := m["tool_name"].(string)
+		prompt, _ := m["prompt"].(string)
+		return fmt.Sprintf("⚠️ Permission: %s\n   %s\n", toolName, prompt)
+	case "result":
+		return "\n--- Session Complete ---\n"
+	default:
+		return "" // 忽略未知类型
+	}
+}
+
+// extractAssistantText 从 assistant_message 的 message 字段提取文本。
+func extractAssistantText(message any) string {
+	switch v := message.(type) {
+	case string:
+		return v
+	case map[string]any:
+		content, ok := v["content"]
+		if !ok {
+			return ""
+		}
+		contentArr, ok := content.([]any)
+		if !ok {
+			return ""
+		}
+		var parts []string
+		for _, block := range contentArr {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				continue
+			}
+			blockType, _ := blockMap["type"].(string)
+			text, _ := blockMap["text"].(string)
+			if blockType == "text" && text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "")
+	}
+	return ""
+}
+
 func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
 	scanner := bufio.NewScanner(stderr)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -192,6 +293,12 @@ func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
 		if line == "" {
 			continue
 		}
+
+		// 同时输出到日志窗口
+		if r.logWindow != nil {
+			fmt.Fprintf(r.logWindow, "[STDERR] %s\n", line)
+		}
+
 		select {
 		case r.errors <- fmt.Errorf("claude stderr: %s", line):
 		default:
@@ -226,7 +333,14 @@ func (r *ClaudeRunner) Close() error {
 		r.stdin.Close()
 	}
 	cmd := r.cmd
+	logWin := r.logWindow
 	r.mu.Unlock()
+
+	// 关闭日志窗口
+	if logWin != nil {
+		logWin.Close()
+	}
+
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}

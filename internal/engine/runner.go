@@ -18,12 +18,13 @@ type Event struct {
 }
 
 type ExecRequest struct {
-	Command string
-	Args    []string
-	CWD     string
-	Env     []string
-	Cols    int
-	Rows    int
+	Command         string
+	Args            []string
+	CWD             string
+	Env             []string
+	Cols            int
+	Rows            int
+	VisibleTerminal bool // 是否在可视化终端窗口中启动（Windows）
 }
 
 type InteractiveStateProvider interface {
