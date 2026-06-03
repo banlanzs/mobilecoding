@@ -16,8 +16,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// ClaudeRunner 启动 claude --print --output-format stream-json --input-format stream-json，
-// 使用 stdin 管道交互，一个进程持续整个会话。
+// ClaudeRunner 启动 claude --print ... "message"，
+// 每条消息启动新进程，通过 --resume 保持多轮对话上下文。
 type ClaudeRunner struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
@@ -32,6 +32,8 @@ type ClaudeRunner struct {
 	ctx       context.Context
 	req       ExecRequest
 	logWindow *LogWindow
+
+	resumeSessionID string // Claude 内部 session id，用于 --resume
 }
 
 func NewClaudeRunner() *ClaudeRunner {
@@ -64,25 +66,31 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	return nil
 }
 
-// startProcess 启动 claude 子进程，使用 stdin 管道交互（一个进程持续整个会话）。
-func (r *ClaudeRunner) startProcess() error {
+// runClaude 启动 claude --print ... "message"，一条消息一个进程。
+// 多轮对话通过 --resume <session_id> 保持上下文。
+func (r *ClaudeRunner) runClaude(prompt string) error {
 	settingsEnv := extractSettingsEnv(r.req.Args)
 	filteredArgs := filterSettingsArgs(r.req.Args)
 
-	baseArgs := []string{"--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}
-	baseArgs = append(baseArgs, filteredArgs...)
+	args := []string{"--print", "--verbose", "--output-format", "stream-json", "--permission-prompt-tool", "stdio"}
 
-	command := r.req.Command
-	var args []string
-	if runtime.GOOS == "windows" {
-		// 避免 cmd /c 导致的 stdin 缓冲问题
-		// 如果有 .cmd 版本，直接用（如 claude → claude.cmd）
-		command = resolveWindowsCommand(command)
-		args = baseArgs
-	} else {
-		args = baseArgs
+	// 多轮对话：续接上次 session
+	r.mu.Lock()
+	sid := r.resumeSessionID
+	r.mu.Unlock()
+	if sid != "" {
+		args = append(args, "--resume", sid)
 	}
 
+	args = append(args, filteredArgs...)
+	if prompt != "" {
+		args = append(args, prompt)
+	}
+
+	command := r.req.Command
+	if runtime.GOOS == "windows" {
+		command = resolveWindowsCommand(command)
+	}
 	cmd := exec.CommandContext(r.ctx, command, args...)
 	if r.req.CWD != "" {
 		cmd.Dir = r.req.CWD
@@ -103,10 +111,6 @@ func (r *ClaudeRunner) startProcess() error {
 	if err != nil {
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
-	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start claude: %w", err)
@@ -114,7 +118,6 @@ func (r *ClaudeRunner) startProcess() error {
 
 	r.mu.Lock()
 	r.cmd = cmd
-	r.stdin = stdin
 	r.stdout = stdout
 	r.started = true
 	r.mu.Unlock()
@@ -127,7 +130,7 @@ func (r *ClaudeRunner) startProcess() error {
 	return nil
 }
 
-// Write 写入用户消息到 stdin。
+// Write 写入用户消息（启动新进程）。
 func (r *ClaudeRunner) Write(p []byte) error {
 	r.mu.Lock()
 	if r.closed {
@@ -145,28 +148,13 @@ func (r *ClaudeRunner) Write(p []byte) error {
 		fmt.Fprintf(r.logWindow, "[USER INPUT] %s\n", content)
 	}
 
-	// 第一次调用时启动进程，之后直接写入 stdin
+	// 如果旧进程还在运行，先杀掉
+	r.killProcess()
 	r.mu.Lock()
-	isNew := !r.started
-	stdin := r.stdin
+	r.started = false
 	r.mu.Unlock()
 
-	if isNew {
-		if err := r.startProcess(); err != nil {
-			return err
-		}
-		// 重新获取 stdin（startProcess 设置了它）
-		r.mu.Lock()
-		stdin = r.stdin
-		r.mu.Unlock()
-	}
-
-	line, err := formatClaudeInput(p)
-	if err != nil {
-		return err
-	}
-	_, err = stdin.Write(line)
-	return err
+	return r.runClaude(content)
 }
 
 func (r *ClaudeRunner) killProcess() {
@@ -192,7 +180,7 @@ func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
 			continue
 		}
 
-		// 检查是否包含 session_id（用于后续 --resume）
+		r.captureResumeID(line)
 		if r.logWindow != nil {
 			fmt.Fprint(r.logWindow, formatStreamJSONForLog(line))
 		}
@@ -206,6 +194,19 @@ func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
 		case r.events <- ev:
 		default:
 		}
+	}
+}
+
+// captureResumeID 从事件行中提取 session_id 用于后续 --resume。
+func (r *ClaudeRunner) captureResumeID(line []byte) {
+	var m map[string]any
+	if err := json.Unmarshal(line, &m); err != nil {
+		return
+	}
+	if sid, ok := m["session_id"].(string); ok && sid != "" {
+		r.mu.Lock()
+		r.resumeSessionID = sid
+		r.mu.Unlock()
 	}
 }
 
