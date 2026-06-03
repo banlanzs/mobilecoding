@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,15 +17,23 @@ import (
 )
 
 func main() {
-	relayURL := flag.String("relay", "ws://localhost:8443/relay/agent", "Relay server URL")
+	relayURL := flag.String("relay", "wss://localhost:8443/relay/agent", "Relay server URL (use wss:// for TLS)")
 	sessionID := flag.String("session", "", "Session ID (optional, auto-generated if empty)")
+	insecure := flag.Bool("insecure", true, "Skip TLS certificate verification (for self-signed certs)")
 	flag.Parse()
 
 	fmt.Printf("=== MobileCoding Relay CLI ===\n")
 	fmt.Printf("Connecting to relay: %s\n", *relayURL)
 
+	// 创建 WebSocket dialer，支持 TLS
+	dialer := &websocket.Dialer{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: *insecure,
+		},
+	}
+
 	// 连接到 relay 服务器
-	conn, _, err := websocket.DefaultDialer.Dial(*relayURL, nil)
+	conn, _, err := dialer.Dial(*relayURL, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to connect to relay: %v\n", err)
 		os.Exit(1)

@@ -49,11 +49,12 @@ func NewServer(cfg SessionConfig) *Server {
 }
 
 // Handler 返回 HTTP handler。
+// 注意：路径不包含 /relay 前缀，因为 gateway router 会 strip prefix。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/relay/agent", s.handleAgent)
-	mux.HandleFunc("/relay/client", s.handleClient)
-	mux.HandleFunc("/relay/healthz", s.healthz)
+	mux.HandleFunc("/agent", s.handleAgent)
+	mux.HandleFunc("/client", s.handleClient)
+	mux.HandleFunc("/healthz", s.healthz)
 	return mux
 }
 
