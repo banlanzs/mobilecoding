@@ -81,23 +81,33 @@ func (r *ClaudeRunner) startProcess(firstInput []byte) error {
 		}
 	}
 
+	// 从 settings 文件读取环境变量（--settings 在 --print 模式下不工作）
+	settingsEnv := extractSettingsEnv(r.req.Args)
+
 	// Windows 上需要使用 cmd /c 来启动 npm 安装的命令
 	command := r.req.Command
 	var args []string
+	// 过滤掉 --settings 参数，改用环境变量
+	filteredArgs := filterSettingsArgs(r.req.Args)
 	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(command), ".exe") {
 		args = []string{"/c", command, "--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}
-		args = append(args, r.req.Args...)
+		args = append(args, filteredArgs...)
 		command = "cmd"
 	} else {
-		args = append([]string{"--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}, r.req.Args...)
+		args = append([]string{"--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}, filteredArgs...)
 	}
 
 	cmd := exec.CommandContext(r.ctx, command, args...)
 	if r.req.CWD != "" {
 		cmd.Dir = r.req.CWD
 	}
+	// 合并环境变量：系统环境 + settings 文件中的环境变量
+	cmd.Env = os.Environ()
+	for k, v := range settingsEnv {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	if len(r.req.Env) > 0 {
-		cmd.Env = append(os.Environ(), r.req.Env...)
+		cmd.Env = append(cmd.Env, r.req.Env...)
 	}
 
 	stdout, err := cmd.StdoutPipe()
@@ -176,6 +186,71 @@ func formatClaudeInput(p []byte) ([]byte, error) {
 		return nil, fmt.Errorf("marshal claude input: %w", err)
 	}
 	return append(line, '\n'), nil
+}
+
+// extractSettingsEnv 从 --settings 参数中读取 settings 文件并提取环境变量。
+// settings 文件格式：{ "env": { "KEY": "value", ... }, ... }
+func extractSettingsEnv(args []string) map[string]string {
+	settingsPath := ""
+	for i, arg := range args {
+		if arg == "--settings" && i+1 < len(args) {
+			settingsPath = args[i+1]
+			break
+		}
+	}
+	if settingsPath == "" {
+		return nil
+	}
+
+	// 展开环境变量（如 $HOME）
+	settingsPath = os.ExpandEnv(settingsPath)
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil
+	}
+
+	var settings struct {
+		Env map[string]string `json:"env"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil
+	}
+
+	// 展开环境变量中的引用
+	for k, v := range settings.Env {
+		settings.Env[k] = os.ExpandEnv(v)
+	}
+
+	return settings.Env
+}
+
+// filterSettingsArgs 从参数列表中移除 --settings 参数。
+func filterSettingsArgs(args []string) []string {
+	var result []string
+	skip := false
+	for _, arg := range args {
+		if skip {
+			skip = false
+			continue
+		}
+		if arg == "--settings" {
+			skip = true
+			continue
+		}
+		result = append(result, arg)
+	}
+	return result
+}
+
+// settingsFilePath 从参数中提取 settings 文件路径。
+func settingsFilePath(args []string) string {
+	for i, arg := range args {
+		if arg == "--settings" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 func (r *ClaudeRunner) Resize(cols, rows int) error {
