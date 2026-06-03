@@ -23,8 +23,11 @@ func Project(in []engine.Event, sid string) []Event {
 			parsed, err := parseClaudeEvent(ev.Data, sid)
 			if err == nil {
 				out = append(out, parsed)
+			} else if !isJSON(ev.Data) {
+				// 非 JSON 数据：透传为文本
+				out = append(out, TextEvent(sid, strings.TrimRight(string(ev.Data), "\r\n")))
 			}
-			// 解析失败的事件：不显示（避免原始 JSON 泄露到前端）
+			// JSON 但无法解析的：跳过（避免原始 JSON 泄露到前端）
 		case engine.EventLifecycle:
 			// 只转发用户可见的生命周期事件
 			if isUserVisibleLifecycle(ev.Message) {
@@ -33,6 +36,12 @@ func Project(in []engine.Event, sid string) []Event {
 		}
 	}
 	return out
+}
+
+// isJSON 判断数据是否为有效 JSON。
+func isJSON(data []byte) bool {
+	var m map[string]any
+	return json.Unmarshal(data, &m) == nil
 }
 
 // isUserVisibleLifecycle 判断生命周期事件是否应该显示给用户。
@@ -54,15 +63,16 @@ func Stream(input <-chan engine.Event, output chan<- Event, sid string) {
 	for ev := range input {
 		switch ev.Kind {
 		case engine.EventRaw:
-			// 尝试深度解析 Claude stream-json
 			parsed, err := parseClaudeEvent(ev.Data, sid)
 			if err == nil {
 				output <- parsed
-			} else {
+			} else if !isJSON(ev.Data) {
 				output <- TextEvent(sid, strings.TrimRight(string(ev.Data), "\r\n"))
 			}
 		case engine.EventLifecycle:
-			output <- LifecycleEvent(sid, ev.Message)
+			if isUserVisibleLifecycle(ev.Message) {
+				output <- LifecycleEvent(sid, ev.Message)
+			}
 		}
 	}
 	close(output)

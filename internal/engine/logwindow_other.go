@@ -1,8 +1,6 @@
-// +build !windows
+//go:build !windows
 
 package engine
-
-import "io"
 
 // LogWindow 非 Windows 平台的占位符
 type LogWindow struct{}

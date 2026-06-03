@@ -127,13 +127,11 @@ func TestProjectClaudeAssistantMessage(t *testing.T) {
 }
 
 func TestProjectNonClaudeJSON(t *testing.T) {
+	// 未知的 JSON 事件应该被过滤（避免原始 JSON 泄露到前端）
 	data := `{"key":"value"}`
 	in := []engine.Event{{Kind: engine.EventRaw, Data: []byte(data)}}
 	got := Project(in, "sess_test")
-	if len(got) != 1 {
-		t.Fatalf("len = %d, want 1", len(got))
-	}
-	if got[0].Type != EventText {
-		t.Errorf("Type = %q, want text", got[0].Type)
+	if len(got) != 0 {
+		t.Fatalf("len = %d, want 0 (unknown JSON should be filtered)", len(got))
 	}
 }
