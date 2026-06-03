@@ -103,6 +103,45 @@
 
 ---
 
+## 功能增强：CLI 可视化终端窗口
+
+### 需求
+当手机选择 CLI 启动后，在电脑上弹出一个终端窗口显示 CLI 的实时输出，而不是隐式在后台运行。
+
+### 解决方案
+- **commit 1ef070c**: 添加 CLI 可视化终端窗口
+
+当手机启动 Claude CLI 时：
+1. 电脑上自动弹出一个 PowerShell 窗口
+2. 窗口实时显示格式化的对话内容（不是原始 JSON）
+3. 用户输入用 `[USER INPUT]` 标记
+4. Claude 回复用 🤖 emoji 标记
+5. 工具调用用 🔧 emoji 标记
+
+### 窗口显示效果示例
+```
+=== MobileCoding Session: sess_xxx ===
+Started at: 2026-06-03 19:47:04
+==========================================
+
+[USER INPUT] hello
+
+🤖 Claude:
+你好！有什么我可以帮助你的吗？
+
+🔧 Tool: Bash
+✅ Tool Result: Bash
+```
+
+### 修改文件
+- `internal/engine/logwindow_windows.go` - Windows 日志窗口实现（PowerShell tail）
+- `internal/engine/logwindow_other.go` - 非 Windows 平台占位符
+- `internal/engine/claude_runner.go` - 集成日志窗口 + 格式化 stream-json 输出
+- `internal/engine/runner.go` - ExecRequest 添加 `VisibleTerminal` 字段
+- `internal/ws/handler.go` - 启动 session 时设置 `VisibleTerminal=true`
+
+---
+
 ## 测试验证
 
 ### 测试步骤
@@ -114,6 +153,7 @@
 
 ### 预期结果
 - Claude CLI 成功启动（不再有 exit status 1）
+- 电脑上弹出 PowerShell 窗口，实时显示对话内容
 - 电脑和手机**同时**收到相同的 Claude 回复内容
 - 服务端日志显示事件广播到多个订阅者
 
