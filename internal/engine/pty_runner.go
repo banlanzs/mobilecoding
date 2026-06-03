@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/google/uuid"
@@ -142,6 +143,8 @@ func (r *PtyRunner) waitLoop() {
 		default:
 		}
 	}
+	// 等待 readLoop 读完所有输出后再关 channels
+	time.Sleep(200 * time.Millisecond)
 	close(r.events)
 	close(r.errors)
 	close(r.done)
