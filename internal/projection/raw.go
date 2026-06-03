@@ -88,10 +88,14 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 	typ, _ := m["type"].(string)
 	switch typ {
 	case "assistant", "assistant_message":
-		text, thinking := extractClaudeContent(m["message"])
-		_ = thinking
-		// 即使只有思考也发送事件（空文本也不跳过，保持 lastActivity 更新防超时）
-		return TextEvent(sid, text), nil
+			text, thinking := extractClaudeContent(m["message"])
+			if text == "" && thinking == "" {
+				return Event{}, errors.New("empty message")
+			}
+			if text == "" {
+				return LifecycleEvent(sid, "thinking"), nil
+			}
+			return TextEvent(sid, text), nil
 	case "tool_use":
 		name, _ := m["name"].(string)
 		input := m["input"]
