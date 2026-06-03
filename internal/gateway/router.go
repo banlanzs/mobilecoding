@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
@@ -26,6 +27,7 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
+	Relay       *relay.Server // Relay 中继服务器
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -71,6 +73,12 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
 		r.Get("/claude-settings", claudeSettingsHandler())
 	})
+
+	// Relay 中继端点（不需要认证，使用配对码认证）
+	if deps.Relay != nil {
+		relayHandler := deps.Relay.Handler()
+		r.Handle("/relay/*", http.StripPrefix("/relay", relayHandler))
+	}
 
 	if deps.FS != nil {
 		r.Handle("/*", spaHandler(deps.FS))

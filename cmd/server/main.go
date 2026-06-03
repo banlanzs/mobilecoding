@@ -19,6 +19,7 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/gateway"
 	"github.com/banlanzs/mobilecoding/internal/logx"
 	"github.com/banlanzs/mobilecoding/internal/projection"
+	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
@@ -166,6 +167,9 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		logger.Warn("startup", "embedded web/ missing; using stub SPA")
 	}
 
+	// 创建 relay 服务器
+	relayServer := relay.NewServer(relay.DefaultSessionConfig())
+
 	hub := ws.NewHub()
 	mgr := session.NewManager()
 	mgr.SetLogger(logger.Info)
@@ -184,6 +188,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		CA:          ca,
 		DefaultCmd:  cfg.DefaultCmd,
 		DefaultArgs: cfg.DefaultArgs,
+		Relay:       relayServer,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
