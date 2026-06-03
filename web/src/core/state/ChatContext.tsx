@@ -119,7 +119,7 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: PropsWithChildren) {
-  const { client, status, connect } = useWebSocket();
+  const { client, status } = useWebSocket();
   const [state, dispatch] = useReducer(reducer, initialState);
   const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
   const relayClientRef = useRef<RelayClient | null>(null);
@@ -136,15 +136,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     });
     return off;
   }, [client]);
-
-  // 自动连接（仅 direct 模式）
-  useEffect(() => {
-    if (state.connectionMode !== 'direct') return;
-    const token = resolveToken();
-    if (token) {
-      connect(token);
-    }
-  }, [connect, state.connectionMode]);
 
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
@@ -181,10 +172,28 @@ export function ChatProvider({ children }: PropsWithChildren) {
     // 连接
     dispatch({ type: 'SET_CONNECTION_MODE', mode: 'relay' });
     relayClient.connect(config);
-
-    // 在 relay 模式下，session 由 CLI 创建，自动设置 sessionId
-    dispatch({ type: 'SESSION_STARTED', sessionId: config.sessionId });
+    // 注意：不自动设置 sessionId，用户需要在手机上选择 CLI 启动
   }, []);
+
+  // 自动连接：检查 URL 参数是否包含 relay 配对信息
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const isRelay = params.get('relay');
+    const session = params.get('session');
+    const secret = params.get('secret');
+
+    if (isRelay && session && secret) {
+      // URL 包含 relay 参数，自动连接 relay
+      const wsBase = location.protocol === 'https:'
+        ? `wss://${location.host}`
+        : `ws://${location.host}`;
+      const relayUrl = `${wsBase}/relay`;
+
+      connectRelay({ relayUrl, sessionId: session, pairingSecret: secret });
+      // 清除 URL 参数避免重复连接
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
+  }, [connectRelay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 断开 Relay 连接
   const disconnectRelay = useCallback(() => {
@@ -198,9 +207,18 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const sendStart = useCallback(
     async (params: SessionStartParams): Promise<SessionStartResult> => {
-      if (state.connectionMode === 'relay') {
-        // Relay 模式下不需要启动 session（CLI 已启动）
-        return { sessionId: state.sessionId || '' };
+      if (state.connectionMode === 'relay' && relayClientRef.current) {
+        // Relay 模式：通过 relay 发送启动命令
+        const payload = JSON.stringify({
+          type: 'session.start',
+          command: params.command,
+          args: params.args || [],
+          cwd: params.cwd || '',
+        });
+        relayClientRef.current.sendText(payload);
+        const sid = 'relay_session';
+        dispatch({ type: 'SESSION_STARTED', sessionId: sid });
+        return { sessionId: sid };
       }
       const result = await client.startSession(params);
       if (result.sessionId) {
@@ -208,7 +226,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
       return result;
     },
-    [client, state.connectionMode, state.sessionId]
+    [client, state.connectionMode]
   );
 
   const sendInput = useCallback(
@@ -261,13 +279,3 @@ export function useChat(): ChatContextValue {
   return ctx;
 }
 
-function resolveToken(): string | null {
-  const params = new URLSearchParams(location.search);
-  const fromQuery = params.get('token');
-  if (fromQuery) {
-    localStorage.setItem('mobilecoding.token', fromQuery);
-    history.replaceState(null, '', location.pathname + location.hash);
-    return fromQuery;
-  }
-  return localStorage.getItem('mobilecoding.token');
-}

@@ -171,23 +171,25 @@ func (s *Server) agentLoop(peer *peerConn) {
 		return
 	}
 
-	// 生成配对就绪事件
-	pairingEvent := PairingReadyEvent{
-		Type:      "mobilecoding.relay.pairing_ready",
-		RelayURL:  fmt.Sprintf("ws://localhost:8443/relay"),
-		SessionID: sessionID,
-		Secret:    pairingSecret,
-		ExpiresAt: session.pairingExpiresAt.Unix(),
-	}
+	// 生成配对 URL（手机扫码后自动连接）
+	pairingURL := fmt.Sprintf("https://localhost:8443/?relay=1&session=%s&secret=%s", sessionID, pairingSecret)
 
-	// 输出配对信息到控制台（CLI 可以读取）
+	// 输出配对信息到控制台
 	fmt.Printf("\n=== MobileCoding Relay ===\n")
 	fmt.Printf("Session ID: %s\n", sessionID)
 	fmt.Printf("Pairing Secret: %s\n", pairingSecret)
+	fmt.Printf("Pairing URL: %s\n", pairingURL)
 	fmt.Printf("Expires At: %s\n", session.pairingExpiresAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("========================\n\n")
 
 	// 将配对事件写入 JSON 供 CLI 使用
+	pairingEvent := PairingReadyEvent{
+		Type:      "mobilecoding.relay.pairing_ready",
+		RelayURL:  pairingURL,
+		SessionID: sessionID,
+		Secret:    pairingSecret,
+		ExpiresAt: session.pairingExpiresAt.Unix(),
+	}
 	eventJSON, _ := json.Marshal(pairingEvent)
 	fmt.Printf("PAIRING_EVENT:%s\n", string(eventJSON))
 

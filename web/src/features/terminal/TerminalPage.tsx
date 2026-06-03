@@ -9,9 +9,11 @@ import './terminal.css';
 export function TerminalPage() {
   const { state } = useChat();
 
-  // 没有 token 时显示提示
+  // Relay 模式或有 token 时显示完整界面
   const hasToken = !!localStorage.getItem('mobilecoding.token');
-  if (!hasToken) {
+  const isRelayMode = state.connectionMode === 'relay';
+
+  if (!hasToken && !isRelayMode) {
     return (
       <div className="terminal">
         <div className="no-token">
