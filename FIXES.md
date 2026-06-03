@@ -171,13 +171,64 @@ Started at: 2026-06-03 19:47:04
 
 ---
 
+## 架构重构：Relay 中继模式
+
+### 背景
+原架构（mobilecoding 直接启动 CLI 进程）存在以下问题：
+- 终端窗口显示原始 JSON，不可读
+- CLI 由 mobilecoding 管理，不自然
+- 编码问题（中文显示乱码）
+
+### 新架构
+```
+电脑上正常启动 CLI → 输入 /mobilecoding → 连接到 relay 服务器 ← 手机扫码连接
+```
+
+### 组件
+
+| 组件 | 描述 | 文件 |
+|------|------|------|
+| Relay Server | WebSocket 中继服务器 | `internal/relay/` |
+| Relay CLI | 连接到 relay 的命令行工具 | `cmd/relay/` |
+| Web PWA | 手机端界面（支持 relay 模式） | `web/src/core/ws/relay-client.ts` |
+| Claude Code Skill | `/mobilecoding` 命令 | `claude-skills/mobilecoding.md` |
+
+### 工作流程
+
+1. **启动 relay 服务器**
+   ```bash
+   mobilecoding
+   ```
+
+2. **在 CLI 中启动 relay 连接**
+   ```bash
+   mobilecoding-relay --relay ws://localhost:8443/relay/agent
+   ```
+
+3. **手机连接**
+   - 打开 mobilecoding web 界面
+   - 输入 session ID 和 pairing secret
+   - 开始远程控制
+
+### 使用 Claude Code Skill
+
+在 Claude Code 中输入：
+```
+/mobilecoding
+```
+
+Claude 会自动运行 `mobilecoding-relay` 命令并显示配对信息。
+
+---
+
 ## 剩余工作
 
 可能需要进一步测试和优化：
 1. 多客户端并发场景
 2. 网络断线重连
 3. 长时间运行稳定性
-4. Claude 响应超时处理
+4. QR 码扫描配对
+5. 自动发现 relay 服务器（mDNS）
 
 ---
 
