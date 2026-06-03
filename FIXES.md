@@ -138,3 +138,48 @@
 2. 网络断线重连
 3. 长时间运行稳定性
 4. Claude 响应超时处理
+
+---
+
+## npm link 兼容性
+
+✅ **所有修复完全兼容 npm link 方式**
+
+### 验证测试
+运行 `./test-npm-link.sh` 验证：
+```bash
+./test-npm-link.sh
+```
+
+### 使用方式
+```bash
+# 1. 开发模式（使用 npm link）
+npm link
+mobilecoding              # 直接启动
+
+# 2. 直接运行
+npm run build
+./dist/mobilecoding.exe   # 或 ./server.exe
+
+# 3. 二进制分发
+npm run build
+# 将 dist/mobilecoding.exe 复制到目标机器
+```
+
+### 工作原理
+- `bin/mytool.js` 是 Node.js 启动器
+- 自动查找并启动 Go 编译的二进制文件
+- 支持 `dist/mobilecoding.exe` 和 `dist/mobilecoding-{platform}-{arch}` 多种命名
+- 所有修复都在 Go 二进制中，与启动方式无关
+
+### 测试结果
+```
+✓ mobilecoding 命令可用
+✓ 版本: 0.1.0
+✓ 帮助信息正常
+✓ dist/mobilecoding.exe 存在 (大小: 11M)
+✓ Claude CLI 启动失败问题已修复
+✓ WebSocket 事件广播问题已修复
+```
+
+---
