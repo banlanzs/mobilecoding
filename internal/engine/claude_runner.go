@@ -230,18 +230,13 @@ func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
 
 func (r *ClaudeRunner) waitLoop() {
 	err := r.cmd.Wait()
-	r.mu.Lock()
-	r.closed = true
-	r.mu.Unlock()
+	// 不关闭 channels，runner 保持活跃等待下一条消息
 	if err != nil {
 		r.errors <- err
-		r.events <- Event{Kind: EventLifecycle, Message: "exited: " + err.Error()}
+		r.events <- Event{Kind: EventLifecycle, Message: "turn complete: " + err.Error()}
 	} else {
-		r.events <- Event{Kind: EventLifecycle, Message: "exited"}
+		r.events <- Event{Kind: EventLifecycle, Message: "turn complete"}
 	}
-	close(r.events)
-	close(r.errors)
-	close(r.done)
 }
 
 func (r *ClaudeRunner) Close() error {
@@ -252,6 +247,9 @@ func (r *ClaudeRunner) Close() error {
 	if r.logWindow != nil {
 		r.logWindow.Close()
 	}
+	close(r.events)
+	close(r.errors)
+	close(r.done)
 	return nil
 }
 
