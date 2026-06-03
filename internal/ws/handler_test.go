@@ -1,11 +1,20 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
+	"github.com/banlanzs/mobilecoding/internal/engine"
+	"github.com/banlanzs/mobilecoding/internal/logx"
+	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/session"
 )
+
+func newTestHandler(mgr *session.Manager) *Handler {
+	return NewHandler(NewHub(), mgr, logx.New())
+}
 
 func TestNewErrorResp(t *testing.T) {
 	e := newErrorResp("u-1", "test_code", "test msg")
@@ -34,7 +43,7 @@ func TestNewErrorRespPtr(t *testing.T) {
 }
 
 func TestDispatchUnknownMethod(t *testing.T) {
-	h := NewHandler(NewHub(), session.NewManager())
+	h := newTestHandler(session.NewManager())
 	resp, _ := h.dispatch(nil, Envelope{Type: "req", ID: "u-x", Method: "session.bogus"})
 	if resp == nil {
 		t.Fatal("expected non-nil resp")
@@ -45,12 +54,12 @@ func TestDispatchUnknownMethod(t *testing.T) {
 }
 
 func TestDispatchStartInvalidParams(t *testing.T) {
-	h := NewHandler(NewHub(), session.NewManager())
+	h := newTestHandler(session.NewManager())
 	resp, _ := h.dispatch(nil, Envelope{
 		Type:   "req",
 		ID:     "u-y",
 		Method: "session.start",
-		Params: json.RawMessage(`{"command":`), // malformed
+		Params: json.RawMessage(`{"command":`),
 	})
 	if resp == nil || resp.Error == nil || resp.Error.Code != "protocol_error" {
 		t.Errorf("expected protocol_error, got %+v", resp)
@@ -58,7 +67,7 @@ func TestDispatchStartInvalidParams(t *testing.T) {
 }
 
 func TestDispatchStopNoActive(t *testing.T) {
-	h := NewHandler(NewHub(), session.NewManager())
+	h := newTestHandler(session.NewManager())
 	resp, _ := h.dispatch(nil, Envelope{Type: "req", ID: "u-z", Method: "session.stop"})
 	if resp == nil {
 		t.Fatal("expected non-nil resp")
@@ -72,7 +81,7 @@ func TestDispatchStopNoActive(t *testing.T) {
 }
 
 func TestDispatchInputNoActive(t *testing.T) {
-	h := NewHandler(NewHub(), session.NewManager())
+	h := newTestHandler(session.NewManager())
 	resp, _ := h.dispatch(nil, Envelope{
 		Type:   "req",
 		ID:     "u-w",
@@ -81,5 +90,124 @@ func TestDispatchInputNoActive(t *testing.T) {
 	})
 	if resp == nil || resp.Error == nil || resp.Error.Code != "engine_failure" {
 		t.Errorf("expected engine_failure, got %+v", resp)
+	}
+}
+
+type mockRunner struct {
+	events    chan engine.Event
+	errs      chan error
+	done      chan struct{}
+	closed    bool
+	lastWrite []byte
+}
+
+func newMockRunner() *mockRunner {
+	return &mockRunner{
+		events: make(chan engine.Event, 32),
+		errs:   make(chan error, 8),
+		done:   make(chan struct{}),
+	}
+}
+func (r *mockRunner) Start(_ context.Context, _ engine.ExecRequest) error { return nil }
+func (r *mockRunner) Write(p []byte) error {
+	r.lastWrite = append([]byte{}, p...)
+	return nil
+}
+func (r *mockRunner) Resize(_, _ int) error { return nil }
+func (r *mockRunner) Close() error {
+	r.closed = true
+	close(r.done)
+	return nil
+}
+func (r *mockRunner) Events() <-chan engine.Event           { return r.events }
+func (r *mockRunner) Errors() <-chan error                  { return r.errs }
+func (r *mockRunner) Done() <-chan struct{}                 { return r.done }
+func (r *mockRunner) SessionID() string                     { return "mock-session" }
+func (r *mockRunner) CanAcceptInteractiveInput() bool       { return false }
+func (r *mockRunner) HasActiveTurn() bool                   { return true }
+
+func TestForwardSessionForwardsEvents(t *testing.T) {
+	mgr := session.NewManager()
+	h := newTestHandler(mgr)
+	run := newMockRunner()
+
+	sid, err := mgr.Start(context.Background(), engine.ExecRequest{Command: "echo"}, run)
+	if err != nil {
+		t.Fatalf("mgr.Start: %v", err)
+	}
+	if sid == "" {
+		t.Fatal("expected non-empty session ID")
+	}
+
+	out := make(chan Envelope, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go h.forwardSession(ctx, out)
+	run.events <- engine.Event{Kind: engine.EventRaw, Data: []byte("hello")}
+
+	select {
+	case env := <-out:
+		if env.Type != "evt" {
+			t.Errorf("type = %q, want evt", env.Type)
+		}
+		if env.SessionID == "" {
+			t.Error("sessionId should not be empty")
+		}
+		var got projection.Event
+		if err := json.Unmarshal(env.Event, &got); err != nil {
+			t.Fatalf("unmarshal event: %v", err)
+		}
+		if got.Type != "text" || got.Text != "hello" {
+			t.Errorf("unexpected event: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for forwarded event")
+	}
+}
+
+func TestForwardSessionContextCancel(t *testing.T) {
+	mgr := session.NewManager()
+	h := newTestHandler(mgr)
+
+	out := make(chan Envelope, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.forwardSession(ctx, out)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("forwardSession did not exit after context cancel")
+	}
+}
+
+func TestHandleInputAppendsNewline(t *testing.T) {
+	mgr := session.NewManager()
+	h := newTestHandler(mgr)
+	run := newMockRunner()
+
+	_, err := mgr.Start(context.Background(), engine.ExecRequest{Command: "echo"}, run)
+	if err != nil {
+		t.Fatalf("mgr.Start: %v", err)
+	}
+
+	resp, _ := h.dispatch(nil, Envelope{
+		Type:   "req",
+		ID:     "u-input",
+		Method: "session.input",
+		Params: json.RawMessage(`{"text":"hi"}`),
+	})
+	if resp == nil || resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp)
+	}
+	if string(run.lastWrite) != "hi\n" {
+		t.Fatalf("lastWrite = %q, want %q", string(run.lastWrite), "hi\\n")
 	}
 }

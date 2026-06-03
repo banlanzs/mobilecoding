@@ -72,12 +72,13 @@ func main() {
 	}
 	certPath := filepath.Join(caDir, "server.crt")
 	keyPath := filepath.Join(caDir, "server.key")
-	if err := auth.LoadOrCreateServerCert(ca, certPath, keyPath, "127.0.0.1", "localhost"); err != nil {
+	localIP := auth.GetLocalIP()
+	if err := auth.LoadOrCreateServerCert(ca, certPath, keyPath, localIP, "localhost"); err != nil {
 		logger.Error("startup", "load server cert: %v", err)
 		os.Exit(1)
 	}
 	// 证书过期检查 + 轮换
-	rotated, err := auth.RotateServerCert(ca, certPath, keyPath, "127.0.0.1", "localhost")
+	rotated, err := auth.RotateServerCert(ca, certPath, keyPath, localIP, "localhost")
 	if err != nil {
 		logger.Error("startup", "rotate cert: %v", err)
 		os.Exit(1)
@@ -94,9 +95,10 @@ func main() {
 	}
 
 	// 打印二维码供客户端扫码配对
-	if err := auth.PrintQRCode(fmt.Sprintf("https://%s:%s/?token=%s", auth.GetLocalIP(), cfg.Port, cfg.AuthToken)); err != nil {
+	if err := auth.PrintQRCode(fmt.Sprintf("https://%s:%s/?token=%s", localIP, cfg.Port, cfg.AuthToken)); err != nil {
 		logger.Warn("startup", "print QR code failed: %v", err)
 	}
+
 
 	// 4. Run
 	if err := run(cfg, logger, tlsCfg, ca); err != nil {
@@ -164,7 +166,8 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 
 	hub := ws.NewHub()
 	mgr := session.NewManager()
-	wsHandler := ws.NewHandler(hub, mgr)
+	mgr.SetLogger(logger.Info)
+	wsHandler := ws.NewHandler(hub, mgr, logger)
 
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,

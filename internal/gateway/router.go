@@ -1,10 +1,13 @@
-// Package gateway 提供 mobilecoding HTTP 入口：healthz/version/SPA + REST 占位 + WS 升级。
+// Package gateway 提供 mobilecoding HTTP 入口：healthz/version/SPA + REST + WS 升级。
 package gateway
 
 import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -66,6 +69,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/memory", memoryListHandler(deps.StoreDir))
 		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
+		r.Get("/claude-settings", claudeSettingsHandler())
 	})
 
 	if deps.FS != nil {
@@ -73,6 +77,49 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 	}
 
 	return r
+}
+
+// claudeSettingsHandler 扫描 ~/.claude/settings.*.json 并返回配置列表。
+// 返回格式：[{ name: "axonhub", path: "C:/Users/xxx/.claude/settings.axonhub.json" }, ...]
+func claudeSettingsHandler() http.HandlerFunc {
+	type settingEntry struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "cannot determine home dir", http.StatusInternalServerError)
+			return
+		}
+		claudeDir := filepath.Join(home, ".claude")
+		entries, err := os.ReadDir(claudeDir)
+		if err != nil {
+			// .claude 目录不存在，返回空列表
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]settingEntry{})
+			return
+		}
+
+		var settings []settingEntry
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			// 匹配 settings.*.json（排除 settings.json）
+			if strings.HasPrefix(name, "settings.") && strings.HasSuffix(name, ".json") && name != "settings.json" {
+				profileName := strings.TrimSuffix(strings.TrimPrefix(name, "settings."), ".json")
+				settings = append(settings, settingEntry{
+					Name: profileName,
+					Path: filepath.Join(claudeDir, name),
+				})
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(settings)
+	}
 }
 
 func deviceCertHandler(ca *auth.CA) http.HandlerFunc {

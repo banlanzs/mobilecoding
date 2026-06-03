@@ -14,6 +14,7 @@ mytool-*
 
 # 文档（本地规划文档，不入库）
 docs/
+Reference-Projects/
 
 # IDE
 .idea/

@@ -1,5 +1,5 @@
-// 会话控制栏：command 选择 + start/stop 按钮
-import { useEffect, useState } from 'react';
+// 会话控制栏：command 选择 + settings 下拉 + start/stop 按钮
+import { useEffect, useState, useCallback } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
 const COMMANDS = [
@@ -9,11 +9,20 @@ const COMMANDS = [
   { value: 'aichat', label: 'Aichat' },
 ];
 
+interface ClaudeSetting {
+  name: string;
+  path: string;
+}
+
 export function SessionBar() {
   const { state, sendStart, sendStop } = useChat();
   const [command, setCommand] = useState('claude');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Claude 配置文件
+  const [claudeSettings, setClaudeSettings] = useState<ClaudeSetting[]>([]);
+  const [selectedSetting, setSelectedSetting] = useState<string>('');
 
   useEffect(() => {
     if (state.runtime.defaultCommand) {
@@ -25,14 +34,45 @@ export function SessionBar() {
     setError(null);
   }, [command]);
 
+  // 连接后拉取 Claude 配置列表
+  const fetchClaudeSettings = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('mobilecoding.token');
+      const res = await fetch('/api/v1/claude-settings', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: ClaudeSetting[] = await res.json();
+        setClaudeSettings(data);
+        if (data.length > 0) {
+          setSelectedSetting(data[0].path);
+        }
+      }
+    } catch {
+      // 忽略错误，不显示配置下拉
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state.status === 'connected') {
+      fetchClaudeSettings();
+    }
+  }, [state.status, fetchClaudeSettings]);
+
   const handleStart = async () => {
     setLoading(true);
     setError(null);
     try {
-      await sendStart({
-        command,
-        args: command === state.runtime.defaultCommand ? state.runtime.defaultArgs : undefined,
-      });
+      let args: string[] | undefined;
+
+      if (command === 'claude' && selectedSetting) {
+        // 使用选中的 Claude 配置文件
+        args = ['--settings', selectedSetting];
+      } else if (command === state.runtime.defaultCommand) {
+        args = state.runtime.defaultArgs;
+      }
+
+      await sendStart({ command, args });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start');
       console.error('start session failed:', err);
@@ -65,6 +105,22 @@ export function SessionBar() {
           </option>
         ))}
       </select>
+
+      {/* Claude 配置选择 */}
+      {command === 'claude' && claudeSettings.length > 0 && (
+        <select
+          value={selectedSetting}
+          onChange={(e) => setSelectedSetting(e.target.value)}
+          disabled={!!state.sessionId || loading}
+          title="选择 Claude 配置文件"
+        >
+          {claudeSettings.map((s) => (
+            <option key={s.path} value={s.path}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       {!state.sessionId ? (
         <button

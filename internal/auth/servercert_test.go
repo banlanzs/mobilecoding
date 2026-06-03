@@ -78,23 +78,30 @@ func TestServerCertSAN(t *testing.T) {
 	}
 }
 
-func TestLoadOrCreateServerCert_Existing(t *testing.T) {
+func TestLoadOrCreateServerCert_RegeneratesWhenSANChanges(t *testing.T) {
 	dir := t.TempDir()
 	ca, _ := LoadOrCreateCA(filepath.Join(dir, "ca.crt"))
 	certPath := filepath.Join(dir, "server.crt")
 	keyPath := filepath.Join(dir, "server.key")
 
-	if err := LoadOrCreateServerCert(ca, certPath, keyPath, "10.0.0.1", "box.lan"); err != nil {
+	if err := LoadOrCreateServerCert(ca, certPath, keyPath, "127.0.0.1", "localhost"); err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	stat1, _ := os.Stat(certPath)
-	mod1 := stat1.ModTime()
-
-	if err := LoadOrCreateServerCert(ca, certPath, keyPath, "10.0.0.1", "box.lan"); err != nil {
+	if err := LoadOrCreateServerCert(ca, certPath, keyPath, "10.133.136.137", "localhost"); err != nil {
 		t.Fatalf("second: %v", err)
 	}
-	stat2, _ := os.Stat(certPath)
-	if !stat2.ModTime().Equal(mod1) {
-		t.Errorf("second call should not regenerate server cert")
+
+	raw, _ := os.ReadFile(certPath)
+	pool := x509.NewCertPool()
+	pool.AddCert(ca.Certificate)
+	cert, err := parseAndVerifyCert(raw, pool)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
 	}
+	for _, ip := range cert.IPAddresses {
+		if ip.Equal(net.ParseIP("10.133.136.137")) {
+			return
+		}
+	}
+	t.Fatalf("SAN should include updated IP 10.133.136.137, got %v", cert.IPAddresses)
 }

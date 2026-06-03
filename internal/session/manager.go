@@ -27,6 +27,7 @@ type Manager struct {
 	out    chan Event
 	err    chan error
 	once   sync.Once
+	log    func(string, string, ...any) // component, format, args...
 }
 
 // NewManager 构造一个空 manager。
@@ -34,7 +35,13 @@ func NewManager() *Manager {
 	return &Manager{
 		out: make(chan Event, 64),
 		err: make(chan error, 8),
+		log: func(string, string, ...any) {},
 	}
+}
+
+// SetLogger 注入日志函数（由 main 调用）。
+func (m *Manager) SetLogger(log func(string, string, ...any)) {
+	m.log = log
 }
 
 // Output 返回当前活跃 session 的事件流。Stop 后会被关闭。
@@ -59,9 +66,11 @@ func (m *Manager) Start(ctx context.Context, req ExecRequest, run engine.Runner)
 		m.mu.Lock()
 		m.active = nil
 		m.mu.Unlock()
+		m.log("session", "runner start FAILED: command=%s err=%v", req.Command, err)
 		return "", err
 	}
 
+	m.log("session", "runner started: command=%s sessionId=%s", req.Command, m.sid)
 	go m.forward(run)
 	return m.sid, nil
 }
@@ -71,24 +80,38 @@ func (m *Manager) forward(run engine.Runner) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	lastActivity := time.Now()
+	count := 0
+	errCh := run.Errors() // 闭合后设为 nil，避免 select 旋转
 
 	for {
 		select {
 		case ev, ok := <-run.Events():
 			if !ok {
-				// Channel closed, runner exited
 				m.mu.Lock()
 				if m.active == run {
 					m.active = nil
 				}
 				m.mu.Unlock()
+				m.log("session", "runner exited (events closed), forwarded %d events", count)
 				return
 			}
 			lastActivity = time.Now()
 			m.out <- ev
+			count++
+			if count <= 5 || count%50 == 0 {
+				m.log("session", "event #%d kind=%s len=%d", count, ev.Kind, len(ev.Data))
+			}
+		case err, ok := <-errCh:
+			if !ok {
+				errCh = nil // 闭合后屏蔽，防止 select 旋转
+				continue
+			}
+			if err != nil {
+				m.log("session", "runner stderr: %v", err)
+			}
 		case <-ticker.C:
 			if time.Since(lastActivity) > 120*time.Second {
-				// Stall watchdog: kill runner
+				m.log("session", "stall watchdog: killing runner")
 				run.Close()
 				m.mu.Lock()
 				if m.active == run {
@@ -110,6 +133,7 @@ func (m *Manager) Stop() error {
 	if run == nil {
 		return nil
 	}
+	m.log("session", "stopping runner")
 	return run.Close()
 }
 
@@ -121,6 +145,7 @@ func (m *Manager) Write(p []byte) error {
 	if run == nil {
 		return errors.New("session: no active runner")
 	}
+	m.log("session", "write: %d bytes", len(p))
 	return run.Write(p)
 }
 

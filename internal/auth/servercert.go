@@ -9,16 +9,22 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 )
 
-// LoadOrCreateServerCert 若 path 已存在则跳过；否则用 ca 签发新 server 证书。
+// LoadOrCreateServerCert 若 path 已存在且 SAN 包含 ip 则跳过；否则用 ca 签发新 server 证书。
 // 证书含 SAN: <ip>, <dns>, 127.0.0.1, localhost（由 ca.SignServerCSR 注入）。
 // Key 用 ECDSA P-256，文件 0o600。
 func LoadOrCreateServerCert(ca *CA, certPath, keyPath, ip, dns string) error {
-	if _, err := os.Stat(certPath); err == nil {
+	if _, err := os.Stat(certPath); err == nil && certHasIPSAN(certPath, ip) {
 		return nil
+	}
+	// 旧证书 SAN 不包含新 IP → 删除后重签
+	if _, err := os.Stat(certPath); err == nil {
+		_ = os.Remove(certPath)
+		_ = os.Remove(keyPath)
 	}
 	if ca == nil || ca.PrivateKey == nil {
 		return errors.New("servercert: CA private key is required to sign new server cert")
@@ -54,6 +60,32 @@ func LoadOrCreateServerCert(ca *CA, certPath, keyPath, ip, dns string) error {
 		return fmt.Errorf("marshal server key: %w", err)
 	}
 	return writePEMFile(keyPath, "EC PRIVATE KEY", keyDER)
+}
+
+// certHasIPSAN 检查 certPath 处的证书 SAN 是否包含 ip。
+func certHasIPSAN(certPath, ip string) bool {
+	raw, err := os.ReadFile(certPath)
+	if err != nil {
+		return false
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	target := net.ParseIP(ip)
+	if target == nil {
+		return false
+	}
+	for _, sanIP := range cert.IPAddresses {
+		if sanIP.Equal(target) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseAndVerifyCert 解析 PEM 并用 pool 验证。测试 helper。

@@ -67,7 +67,7 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 	typ, _ := m["type"].(string)
 	switch typ {
 	case "assistant_message":
-		msg, _ := m["message"].(string)
+		msg := extractClaudeAssistantText(m["message"])
 		return TextEvent(sid, msg), nil
 	case "tool_use":
 		name, _ := m["name"].(string)
@@ -87,7 +87,45 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 		return ContextWindowEvent(sid, m), nil
 	case "session":
 		return SessionEvent(sid, m), nil
+	case "system":
+		// Claude 启动初始化事件，跳过
+		return Event{}, errors.New("skip system event")
+	case "result":
+		// Claude 结束事件，跳过
+		return Event{}, errors.New("skip result event")
 	default:
-		return Event{}, errors.New("unknown event type")
+		return Event{}, errors.New("unknown event type: " + typ)
 	}
+}
+
+// extractClaudeAssistantText 从 Claude assistant_message 的 message 字段提取文本。
+// message 可能是字符串（旧格式）或对象（新格式，含 content 数组）。
+func extractClaudeAssistantText(message any) string {
+	switch v := message.(type) {
+	case string:
+		return v
+	case map[string]any:
+		content, ok := v["content"]
+		if !ok {
+			return ""
+		}
+		contentArr, ok := content.([]any)
+		if !ok {
+			return ""
+		}
+		var parts []string
+		for _, block := range contentArr {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				continue
+			}
+			blockType, _ := blockMap["type"].(string)
+			text, _ := blockMap["text"].(string)
+			if blockType == "text" && text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "")
+	}
+	return ""
 }
