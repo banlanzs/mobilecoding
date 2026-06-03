@@ -54,6 +54,14 @@ export function MessageList() {
       {state.messages.map((msg, i) => (
         <EventCard key={i} event={msg} />
       ))}
+      {state.thinking && (
+        <div className="thinking-indicator">
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-text">thinking...</span>
+        </div>
+      )}
       <div ref={sentinelRef} />
 
       {showScrollBtn && (

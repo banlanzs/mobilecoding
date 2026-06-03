@@ -32,6 +32,7 @@ export interface ChatState {
   lastError: string | null;
   runtime: RuntimeConfig;
   connectionMode: 'direct' | 'relay';
+  thinking: boolean;
 }
 
 type Action =
@@ -56,7 +57,7 @@ function reducer(state: ChatState, action: Action): ChatState {
     }
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
-      return { ...state, sessionId: null, permissionPrompt: null };
+      return { ...state, sessionId: null, permissionPrompt: null, thinking: false };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
     case 'SET_CONNECTION_MODE':
@@ -75,6 +76,10 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'permission_request') {
         next.permissionPrompt = ev;
       }
+      // 收到文本回复时结束 thinking
+      if (ev.type === 'text' || ev.type === 'lifecycle') {
+        next.thinking = false;
+      }
       return next;
     }
     case 'USER_MESSAGE_SENT': {
@@ -88,7 +93,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (messages.length > MAX_MESSAGES) {
         messages.splice(0, messages.length - MAX_MESSAGES);
       }
-      return { ...state, messages };
+      return { ...state, messages, thinking: true };
     }
     case 'PERMISSION_ANSWERED':
       return { ...state, permissionPrompt: null };
@@ -112,6 +117,7 @@ const initialState: ChatState = {
   lastError: null,
   runtime: { defaultCommand: '', defaultArgs: [] },
   connectionMode: 'direct',
+  thinking: false,
 };
 
 interface ChatContextValue {
@@ -256,7 +262,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
       if (state.connectionMode === 'relay' && relayClientRef.current) {
         relayClientRef.current.sendText(text);
       } else {
-        await client.sendInput(text);
+        try {
+          await client.sendInput(text);
+        } catch (err) {
+          // 会话已死：自动重置状态
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('no active runner') || msg.includes('engine_failure')) {
+            dispatch({ type: 'SESSION_STOPPED' });
+            dispatch({ type: 'ERROR', error: '会话已断开，请重新启动' });
+          }
+          throw err;
+        }
       }
     },
     [client, state.sessionId, state.connectionMode]
