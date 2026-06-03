@@ -66,8 +66,11 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 
 	typ, _ := m["type"].(string)
 	switch typ {
-	case "assistant_message":
+	case "assistant", "assistant_message":
 		msg := extractClaudeAssistantText(m["message"])
+		if msg == "" {
+			return Event{}, errors.New("empty assistant message")
+		}
 		return TextEvent(sid, msg), nil
 	case "tool_use":
 		name, _ := m["name"].(string)
@@ -85,11 +88,9 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 		return PlanModeEvent(sid, m), nil
 	case "context_window":
 		return ContextWindowEvent(sid, m), nil
-	case "session":
-		return SessionEvent(sid, m), nil
-	case "system":
+	case "session", "system":
 		// Claude 启动初始化事件，跳过
-		return Event{}, errors.New("skip system event")
+		return Event{}, errors.New("skip system/session event")
 	case "result":
 		// Claude 结束事件，跳过
 		return Event{}, errors.New("skip result event")
