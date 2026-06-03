@@ -74,10 +74,11 @@ func (r *ClaudeRunner) startProcess() error {
 
 	command := r.req.Command
 	var args []string
-	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(command), ".exe") {
-		args = []string{"/c", command}
-		args = append(args, baseArgs...)
-		command = "cmd"
+	if runtime.GOOS == "windows" {
+		// 避免 cmd /c 导致的 stdin 缓冲问题
+		// 如果有 .cmd 版本，直接用（如 claude → claude.cmd）
+		command = resolveWindowsCommand(command)
+		args = baseArgs
 	} else {
 		args = baseArgs
 	}
@@ -267,6 +268,26 @@ func formatClaudeInput(p []byte) ([]byte, error) {
 }
 
 // extractSettingsEnv 从 --settings 参数中读取 settings 文件并提取环境变量。
+// resolveWindowsCommand 在 Windows 上找到可执行文件路径。
+// 避免使用 cmd /c 导致 stdin 管道缓冲问题。
+func resolveWindowsCommand(cmd string) string {
+	lower := strings.ToLower(cmd)
+	if strings.HasSuffix(lower, ".exe") || strings.HasSuffix(lower, ".cmd") || strings.HasSuffix(lower, ".bat") {
+		return cmd
+	}
+	// 尝试找 claude.cmd / codex.cmd 等
+	for _, ext := range []string{".cmd", ".exe", ".bat"} {
+		if resolved, err := exec.LookPath(cmd + ext); err == nil {
+			return resolved
+		}
+	}
+	// 尝试直接查找
+	if resolved, err := exec.LookPath(cmd); err == nil && resolved != "" {
+		return resolved
+	}
+	return cmd
+}
+
 func extractSettingsEnv(args []string) map[string]string {
 	settingsPath := ""
 	for i, arg := range args {
