@@ -1,4 +1,4 @@
-// +build windows
+//go:build windows
 
 package engine
 
@@ -30,25 +30,22 @@ func NewLogWindow(sessionID string) (*LogWindow, error) {
 		return nil, fmt.Errorf("create log file: %w", err)
 	}
 
-	// 启动 PowerShell 窗口实时显示日志
-	// Get-Content -Path <file> -Wait 相当于 tail -f
-	psScript := fmt.Sprintf(
-		`Get-Content -Path '%s' -Wait`,
-		logPath,
-	)
-
-	cmd := exec.Command("powershell.exe", "-NoExit", "-Command", psScript)
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
-		os.Remove(logPath)
-		return nil, fmt.Errorf("start powershell window: %w", err)
-	}
-
 	// 写入欢迎消息
 	fmt.Fprintf(logFile, "=== MobileCoding Session: %s ===\n", sessionID)
 	fmt.Fprintf(logFile, "Started at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(logFile, "==========================================\n\n")
 	logFile.Sync()
+
+	// 使用 cmd.exe /c start 启动新窗口，确保窗口可见
+	// start 命令会创建一个新的控制台窗口
+	psScript := fmt.Sprintf(`Get-Content -Path '%s' -Wait`, logPath)
+	cmd := exec.Command("cmd.exe", "/c", "start", "MobileCoding Session", "powershell.exe", "-NoExit", "-Command", psScript)
+
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		os.Remove(logPath)
+		return nil, fmt.Errorf("start powershell window: %w", err)
+	}
 
 	return &LogWindow{
 		logFile: logFile,

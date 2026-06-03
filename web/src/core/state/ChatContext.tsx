@@ -149,24 +149,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       .catch(() => {});
   }, [status]);
 
-  // 连接成功且有 defaultCommand 时自动启动
-  const autoStartedRef = useRef(false);
-  useEffect(() => {
-    if (status !== 'connected') {
-      autoStartedRef.current = false;
-      return;
-    }
-    if (state.sessionId || autoStartedRef.current) return;
-    const rc = runtimeRef.current;
-    if (!rc.defaultCommand) return;
-    autoStartedRef.current = true;
-    client.startSession({ command: rc.defaultCommand, args: rc.defaultArgs })
-      .then((r) => dispatch({ type: 'SESSION_STARTED', sessionId: r.sessionId }))
-      .catch(() => {
-        autoStartedRef.current = false;
-      });
-  }, [status, state.sessionId, state.runtime, client]);
-
   const sendStart = useCallback(
     async (params: SessionStartParams): Promise<SessionStartResult> => {
       const result = await client.startSession(params);
