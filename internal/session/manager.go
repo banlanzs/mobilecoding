@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -75,13 +74,11 @@ func (m *Manager) Start(ctx context.Context, req ExecRequest, run engine.Runner)
 	return m.sid, nil
 }
 
-// forward 把 runner 的事件复制到 manager 的 output，同时监控沉默。
+// forward 把 runner 的事件复制到 manager 的 output。
+// 会话只在用户手动 Stop 或进程自然退出时结束，不会自动超时断开。
 func (m *Manager) forward(run engine.Runner) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	lastActivity := time.Now()
 	count := 0
-	errCh := run.Errors() // 闭合后设为 nil，避免 select 旋转
+	errCh := run.Errors()
 
 	for {
 		select {
@@ -95,7 +92,6 @@ func (m *Manager) forward(run engine.Runner) {
 				m.log("session", "runner exited (events closed), forwarded %d events", count)
 				return
 			}
-			lastActivity = time.Now()
 			m.out <- ev
 			count++
 			if count <= 5 || count%50 == 0 {
@@ -103,22 +99,11 @@ func (m *Manager) forward(run engine.Runner) {
 			}
 		case err, ok := <-errCh:
 			if !ok {
-				errCh = nil // 闭合后屏蔽，防止 select 旋转
+				errCh = nil
 				continue
 			}
 			if err != nil {
 				m.log("session", "runner stderr: %v", err)
-			}
-		case <-ticker.C:
-			if time.Since(lastActivity) > 300*time.Second {
-				m.log("session", "stall watchdog: killing runner")
-				run.Close()
-				m.mu.Lock()
-				if m.active == run {
-					m.active = nil
-				}
-				m.mu.Unlock()
-				return
 			}
 		}
 	}
