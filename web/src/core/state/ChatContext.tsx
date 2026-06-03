@@ -6,7 +6,6 @@ import {
   useEffect,
   useCallback,
   useRef,
-  useState,
   type PropsWithChildren,
 } from 'react';
 import { useWebSocket } from '../ws/useWebSocket';

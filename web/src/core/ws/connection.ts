@@ -1,5 +1,5 @@
 // 统一连接接口：支持直接连接和 relay 连接
-import type { ConnectionStatus, AppEvent, SessionStartParams, SessionStartResult } from './types';
+import type { ConnectionStatus, AppEvent } from './types';
 
 export interface Connection {
   connect(params: any): void;
