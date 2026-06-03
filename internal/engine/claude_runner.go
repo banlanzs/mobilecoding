@@ -16,11 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// ClaudeRunner 启动 claude --print --output-format stream-json --input-format stream-json，
-// 采用 lazy start：Start() 不启动进程，首条消息到达时才启动并写入 stdin。
+// ClaudeRunner 启动 claude --print --output-format stream-json，
+// 每次消息通过命令行参数传 prompt（不用 stdin 管道，更可靠）。
 type ClaudeRunner struct {
 	cmd       *exec.Cmd
-	stdin     io.WriteCloser
 	stdout    io.ReadCloser
 	events    chan Event
 	errors    chan error
@@ -31,7 +30,9 @@ type ClaudeRunner struct {
 	started   bool
 	ctx       context.Context
 	req       ExecRequest
-	logWindow *LogWindow // 可视化日志窗口（Windows）
+	logWindow *LogWindow
+	// 用于多轮对话的 session 恢复
+	claudeSessionID string // --resume 参数使用的 Claude 内部 session id
 }
 
 func NewClaudeRunner() *ClaudeRunner {
@@ -47,15 +48,13 @@ func (r *ClaudeRunner) SessionID() string              { return r.sessionID }
 func (r *ClaudeRunner) Events() <-chan Event            { return r.events }
 func (r *ClaudeRunner) Errors() <-chan error            { return r.errors }
 func (r *ClaudeRunner) Done() <-chan struct{}           { return r.done }
-func (r *ClaudeRunner) CanAcceptInteractiveInput() bool { return true }
+func (r *ClaudeRunner) CanAcceptInteractiveInput() bool { return !r.closed }
 func (r *ClaudeRunner) HasActiveTurn() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.started && r.cmd != nil && r.cmd.Process != nil
 }
 
-// Start 保存配置但不启动进程（lazy start）。
-// 首条 Write() 到达时才真正启动 claude。
 func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	if req.Command == "" {
 		return errors.New("command is required")
@@ -66,42 +65,42 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	return nil
 }
 
-// startProcess 启动 claude 子进程并立即写入首条消息。
-func (r *ClaudeRunner) startProcess(firstInput []byte) error {
-	// 如果需要可视化终端，创建日志窗口
-	if r.req.VisibleTerminal {
-		logWin, err := NewLogWindow(r.sessionID)
-		if err != nil {
-			// 日志窗口创建失败不影响核心功能，只记录错误
-			r.errors <- fmt.Errorf("create log window failed (non-fatal): %w", err)
-		} else {
-			r.logWindow = logWin
-			fmt.Fprintf(r.logWindow, "[INFO] Starting Claude CLI...\n")
-			fmt.Fprintf(r.logWindow, "[INFO] Command: %s %v\n\n", r.req.Command, r.req.Args)
-		}
+// startProcess 启动 claude 子进程，用命令行参数传 prompt。
+func (r *ClaudeRunner) startProcess(prompt string) error {
+	settingsEnv := extractSettingsEnv(r.req.Args)
+	filteredArgs := filterSettingsArgs(r.req.Args)
+
+	// 构建基本参数：--print --verbose --output-format stream-json
+	baseArgs := []string{"--print", "--verbose", "--output-format", "stream-json", "--permission-prompt-tool", "stdio"}
+
+	// 如果是多轮对话，添加 --resume
+	if r.claudeSessionID != "" {
+		baseArgs = append(baseArgs, "--resume", r.claudeSessionID)
 	}
 
-	// 从 settings 文件读取环境变量（--settings 在 --print 模式下不工作）
-	settingsEnv := extractSettingsEnv(r.req.Args)
+	// 添加其他参数（排除 --settings）和 prompt
+	baseArgs = append(baseArgs, filteredArgs...)
+	if prompt != "" {
+		baseArgs = append(baseArgs, prompt)
+	}
 
-	// Windows 上需要使用 cmd /c 来启动 npm 安装的命令
 	command := r.req.Command
 	var args []string
-	// 过滤掉 --settings 参数，改用环境变量
-	filteredArgs := filterSettingsArgs(r.req.Args)
 	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(command), ".exe") {
-		args = []string{"/c", command, "--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}
-		args = append(args, filteredArgs...)
+		args = []string{"/c", command}
+		args = append(args, baseArgs...)
 		command = "cmd"
 	} else {
-		args = append([]string{"--print", "--verbose", "--output-format", "stream-json", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"}, filteredArgs...)
+		args = baseArgs
 	}
+
+	r.events <- Event{Kind: EventLifecycle, Message: fmt.Sprintf("cmd: %s %s", command, strings.Join(args, " "))}
 
 	cmd := exec.CommandContext(r.ctx, command, args...)
 	if r.req.CWD != "" {
 		cmd.Dir = r.req.CWD
 	}
-	// 合并环境变量：系统环境 + settings 文件中的环境变量
+	// 设置环境变量
 	cmd.Env = os.Environ()
 	for k, v := range settingsEnv {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -118,29 +117,16 @@ func (r *ClaudeRunner) startProcess(firstInput []byte) error {
 	if err != nil {
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
-	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start claude: %w", err)
 	}
 
+	r.mu.Lock()
 	r.cmd = cmd
-	r.stdin = stdin
 	r.stdout = stdout
 	r.started = true
-
-	// 立即写入首条消息
-	inputLine, err := formatClaudeInput(firstInput)
-	if err != nil {
-		_ = cmd.Process.Kill()
-		return fmt.Errorf("format first input: %w", err)
-	}
-	if _, err := stdin.Write(inputLine); err != nil {
-		_ = cmd.Process.Kill()
-		return fmt.Errorf("write first input: %w", err)
-	}
+	r.mu.Unlock()
 
 	r.events <- Event{Kind: EventLifecycle, Message: "started: claude"}
 
@@ -150,29 +136,138 @@ func (r *ClaudeRunner) startProcess(firstInput []byte) error {
 	return nil
 }
 
-// Write 写入用户消息。首次调用时启动进程。
+// Write 写入用户消息。
 func (r *ClaudeRunner) Write(p []byte) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed {
+		r.mu.Unlock()
 		return errors.New("runner is closed")
 	}
+	r.mu.Unlock()
 
-	// 记录用户输入到日志窗口
-	if r.logWindow != nil && len(p) > 0 {
-		content := strings.TrimRight(string(p), "\r\n")
+	content := strings.TrimRight(string(p), "\r\n")
+	if content == "" {
+		return nil
+	}
+
+	// 记录用户输入
+	if r.logWindow != nil {
 		fmt.Fprintf(r.logWindow, "[USER INPUT] %s\n", content)
 	}
 
-	if !r.started {
-		return r.startProcess(p)
+	// 每次都启动新进程（或者第一次启动）
+	r.mu.Lock()
+	isRunning := r.started && r.cmd != nil && r.cmd.Process != nil
+	r.mu.Unlock()
+
+	if isRunning {
+		// 如果已经在运行，先关闭旧进程
+		r.killProcess()
+		r.mu.Lock()
+		r.started = false
+		r.mu.Unlock()
 	}
-	line, err := formatClaudeInput(p)
-	if err != nil {
-		return err
+
+	return r.startProcess(content)
+}
+
+// killProcess 强制终止当前进程。
+func (r *ClaudeRunner) killProcess() {
+	r.mu.Lock()
+	cmd := r.cmd
+	r.mu.Unlock()
+	if cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
 	}
-	_, err = r.stdin.Write(line)
-	return err
+}
+
+func (r *ClaudeRunner) Resize(cols, rows int) error {
+	return nil
+}
+
+func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		// 检查是否包含 session_id（用于后续 --resume）
+		r.captureSessionID(line)
+
+		if r.logWindow != nil {
+			fmt.Fprint(r.logWindow, formatStreamJSONForLog(line))
+		}
+
+		ev, err := ParseClaudeStreamJSON(line)
+		if err != nil {
+			r.errors <- fmt.Errorf("claude parse: %w", err)
+			continue
+		}
+		select {
+		case r.events <- ev:
+		default:
+		}
+	}
+}
+
+// captureSessionID 从 result 事件中提取 session_id。
+func (r *ClaudeRunner) captureSessionID(line []byte) {
+	var m map[string]any
+	if err := json.Unmarshal(line, &m); err != nil {
+		return
+	}
+	if sid, ok := m["session_id"].(string); ok && sid != "" {
+		r.claudeSessionID = sid
+	}
+}
+
+func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
+	scanner := bufio.NewScanner(stderr)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		if r.logWindow != nil {
+			fmt.Fprintf(r.logWindow, "[STDERR] %s\n", line)
+		}
+		select {
+		case r.errors <- fmt.Errorf("claude stderr: %s", line):
+		default:
+		}
+	}
+}
+
+func (r *ClaudeRunner) waitLoop() {
+	err := r.cmd.Wait()
+	r.mu.Lock()
+	wasClosed := r.closed
+	r.mu.Unlock()
+	if err != nil && !wasClosed {
+		r.errors <- err
+		r.events <- Event{Kind: EventLifecycle, Message: "exited: " + err.Error()}
+	} else {
+		r.events <- Event{Kind: EventLifecycle, Message: "exited"}
+	}
+	// 注意：不关闭 channels，runner 可以重新启动
+}
+
+func (r *ClaudeRunner) Close() error {
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
+	r.killProcess()
+	if r.logWindow != nil {
+		r.logWindow.Close()
+	}
+	close(r.events)
+	close(r.errors)
+	close(r.done)
+	return nil
 }
 
 func formatClaudeInput(p []byte) ([]byte, error) {
@@ -189,7 +284,6 @@ func formatClaudeInput(p []byte) ([]byte, error) {
 }
 
 // extractSettingsEnv 从 --settings 参数中读取 settings 文件并提取环境变量。
-// settings 文件格式：{ "env": { "KEY": "value", ... }, ... }
 func extractSettingsEnv(args []string) map[string]string {
 	settingsPath := ""
 	for i, arg := range args {
@@ -202,9 +296,7 @@ func extractSettingsEnv(args []string) map[string]string {
 		return nil
 	}
 
-	// 展开环境变量（如 $HOME）
 	settingsPath = os.ExpandEnv(settingsPath)
-
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		return nil
@@ -217,11 +309,9 @@ func extractSettingsEnv(args []string) map[string]string {
 		return nil
 	}
 
-	// 展开环境变量中的引用
 	for k, v := range settings.Env {
 		settings.Env[k] = os.ExpandEnv(v)
 	}
-
 	return settings.Env
 }
 
@@ -243,51 +333,7 @@ func filterSettingsArgs(args []string) []string {
 	return result
 }
 
-// settingsFilePath 从参数中提取 settings 文件路径。
-func settingsFilePath(args []string) string {
-	for i, arg := range args {
-		if arg == "--settings" && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
-}
-
-func (r *ClaudeRunner) Resize(cols, rows int) error {
-	return nil
-}
-
-func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		// 输出格式化内容到日志窗口
-		if r.logWindow != nil {
-			fmt.Fprint(r.logWindow, formatStreamJSONForLog(line))
-		}
-
-		ev, err := ParseClaudeStreamJSON(line)
-		if err != nil {
-			r.errors <- fmt.Errorf("claude parse: %w", err)
-			continue
-		}
-		select {
-		case r.events <- ev:
-		default:
-			select {
-			case r.errors <- errors.New("events channel full, dropping chunk"):
-			default:
-			}
-		}
-	}
-}
-
-// formatStreamJSONForLog 将 Claude stream-json 的单行解析为人类可读的文本。
+// formatStreamJSONForLog 将 Claude stream-json 解析为可读文本。
 func formatStreamJSONForLog(line []byte) string {
 	var m map[string]any
 	if err := json.Unmarshal(line, &m); err != nil {
@@ -298,14 +344,11 @@ func formatStreamJSONForLog(line []byte) string {
 	switch typ {
 	case "system":
 		subtype, _ := m["subtype"].(string)
-		if subtype == "hook_started" {
-			return "" // 跳过 hook 启动事件
-		}
-		if subtype == "hook_response" {
-			return "" // 跳过 hook 响应事件
+		if subtype == "hook_started" || subtype == "hook_response" {
+			return ""
 		}
 		return fmt.Sprintf("[SYSTEM] %s\n", subtype)
-	case "assistant_message":
+	case "assistant", "assistant_message":
 		msg := m["message"]
 		text := extractAssistantText(msg)
 		if text == "" {
@@ -325,11 +368,10 @@ func formatStreamJSONForLog(line []byte) string {
 	case "result":
 		return "\n--- Session Complete ---\n"
 	default:
-		return "" // 忽略未知类型
+		return ""
 	}
 }
 
-// extractAssistantText 从 assistant_message 的 message 字段提取文本。
 func extractAssistantText(message any) string {
 	switch v := message.(type) {
 	case string:
@@ -358,66 +400,4 @@ func extractAssistantText(message any) string {
 		return strings.Join(parts, "")
 	}
 	return ""
-}
-
-func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
-	scanner := bufio.NewScanner(stderr)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		// 同时输出到日志窗口
-		if r.logWindow != nil {
-			fmt.Fprintf(r.logWindow, "[STDERR] %s\n", line)
-		}
-
-		select {
-		case r.errors <- fmt.Errorf("claude stderr: %s", line):
-		default:
-		}
-	}
-}
-
-func (r *ClaudeRunner) waitLoop() {
-	err := r.cmd.Wait()
-	r.mu.Lock()
-	r.closed = true
-	r.mu.Unlock()
-	if err != nil {
-		r.errors <- err
-		r.events <- Event{Kind: EventLifecycle, Message: "exited: " + err.Error()}
-	} else {
-		r.events <- Event{Kind: EventLifecycle, Message: "exited"}
-	}
-	close(r.events)
-	close(r.errors)
-	close(r.done)
-}
-
-func (r *ClaudeRunner) Close() error {
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return nil
-	}
-	r.closed = true
-	if r.stdin != nil {
-		r.stdin.Close()
-	}
-	cmd := r.cmd
-	logWin := r.logWindow
-	r.mu.Unlock()
-
-	// 关闭日志窗口
-	if logWin != nil {
-		logWin.Close()
-	}
-
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Kill()
-	}
-	return nil
 }

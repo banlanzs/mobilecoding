@@ -145,7 +145,7 @@ func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any
 		Command:         p.Command,
 		Args:            p.Args,
 		CWD:             p.CWD,
-		VisibleTerminal: true, // 在可视化终端中显示 CLI 输出
+		VisibleTerminal: false,
 	})
 	if err != nil {
 		h.logger.Error("session", "new runner failed: command=%s err=%v", p.Command, err)
@@ -155,7 +155,7 @@ func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any
 		Command:         p.Command,
 		Args:            p.Args,
 		CWD:             p.CWD,
-		VisibleTerminal: true, // 在可视化终端中显示 CLI 输出
+		VisibleTerminal: false,
 	}, run)
 	if err != nil {
 		h.logger.Error("session", "start failed: command=%s err=%v", p.Command, err)
