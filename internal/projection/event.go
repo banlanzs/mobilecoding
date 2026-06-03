@@ -21,15 +21,15 @@ const (
 
 // Event 是投影后的事件（前端订阅的契约）。
 type Event struct {
-	Type      EventType
-	SessionID string
-	Time      time.Time
-	Text      string // EventText
-	Message   string // EventLifecycle
+	Type       EventType `json:"type"`
+	SessionID  string    `json:"sessionId"`
+	Time       time.Time `json:"time"`
+	Text       string    `json:"text,omitempty"`
+	Message    string    `json:"message,omitempty"`
 	// 扩展字段
-	ToolName  string
-	ToolInput any
-	ToolResult any
+	ToolName   string    `json:"toolName,omitempty"`
+	ToolInput  any       `json:"toolInput,omitempty"`
+	ToolResult any       `json:"toolResult,omitempty"`
 }
 
 // TextEvent 构造一个文本事件。
