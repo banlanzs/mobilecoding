@@ -12,12 +12,21 @@ const STATUS_LABELS: Record<string, string> = {
 export function ConnectionBar() {
   const { state } = useChat();
 
+  const shortCwd = state.runtime.cwd
+    ? state.runtime.cwd.replace(/^[A-Z]:/, '').replace(/\\/g, '/').split('/').slice(-2).join('/')
+    : '';
+
   return (
     <div className="conn-bar" data-status={state.status}>
       <span className="conn-dot" />
       <span className="conn-label">
         {STATUS_LABELS[state.status] || state.status}
       </span>
+      {shortCwd && (
+        <span className="conn-label" style={{ color: '#565f89' }}>
+          {shortCwd}
+        </span>
+      )}
       {state.sessionId && (
         <span className="conn-sid">session: {state.sessionId.slice(0, 12)}…</span>
       )}

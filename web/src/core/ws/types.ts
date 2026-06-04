@@ -44,6 +44,7 @@ export type Envelope = RequestEnvelope | ResponseEnvelope | EventEnvelope;
 // 投影事件类型
 export type EventType =
   | 'text'
+  | 'text_delta'
   | 'lifecycle'
   | 'tool_use'
   | 'tool_result'
@@ -61,6 +62,14 @@ export interface BaseEvent {
 export interface TextEvent extends BaseEvent {
   type: 'text';
   text: string;
+  thinking?: string;
+}
+
+export interface TextDeltaEvent extends BaseEvent {
+  type: 'text_delta';
+  text: string;
+  thinking?: string;
+  blockIndex: number;
 }
 
 export interface LifecycleEvent extends BaseEvent {
@@ -103,6 +112,7 @@ export interface SessionEvent extends BaseEvent {
 
 export type AppEvent =
   | TextEvent
+  | TextDeltaEvent
   | LifecycleEvent
   | ToolUseEvent
   | ToolResultEvent
@@ -125,6 +135,7 @@ export type DisplayMessage = AppEvent | UserMessage;
 export interface RuntimeConfig {
   defaultCommand: string;
   defaultArgs: string[];
+  cwd?: string;
 }
 
 export interface SessionStartParams {

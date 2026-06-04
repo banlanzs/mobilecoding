@@ -43,8 +43,21 @@ export class RelayClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('not connected');
     }
+    this.sendRelayForward(JSON.stringify({ text }));
+  }
 
-    const payload = JSON.stringify({ text });
+  sendPermissionAnswer(allow: boolean, toolName: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('not connected');
+    }
+    this.sendRelayForward(JSON.stringify({
+      type: 'permission_answer',
+      allow,
+      toolName,
+    }));
+  }
+
+  private sendRelayForward(payload: string): void {
     const envelope = {
       type: 'relay.forward',
       version: 1,
@@ -55,8 +68,7 @@ export class RelayClient {
       contentType: 'mobilecoding.ws.v1',
       payload,
     };
-
-    this.ws.send(JSON.stringify(envelope));
+    this.ws!.send(JSON.stringify(envelope));
   }
 
   onEvent(cb: EventCallback): () => void {

@@ -134,6 +134,17 @@ func (m *Manager) Write(p []byte) error {
 	return run.Write(p)
 }
 
+// SendToStdin 写入当前活跃 runner 的 stdin（不杀进程）。
+func (m *Manager) SendToStdin(p []byte) error {
+	m.mu.Lock()
+	run := m.active
+	m.mu.Unlock()
+	if run == nil {
+		return errors.New("session: no active runner")
+	}
+	return run.SendToStdin(p)
+}
+
 // SessionID 返回当前活跃 session id，无活跃返回空。
 func (m *Manager) SessionID() string {
 	m.mu.Lock()

@@ -1,7 +1,17 @@
+/* 终端界面全屏覆盖全局布局 */
+#root:has(.terminal) {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  border-inline: none;
+  min-height: 100dvh;
+}
+
 /* 终端界面暗色主题 — mobile-first */
 .terminal {
   height: 100dvh;
   height: 100svh; /* fallback */
+  width: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -76,6 +86,13 @@
   border-bottom: 1px solid #3b4261;
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+.session-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .session-error {
@@ -186,43 +203,215 @@
   font-weight: 600;
 }
 
+/* Markdown 渲染样式 — 全面优化 */
+.markdown-body {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 16px 0 8px;
+  color: #c0caf5;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown-body h1 { font-size: 20px; letter-spacing: -0.5px; }
+.markdown-body h2 {
+  font-size: 17px;
+  border-bottom: 2px solid #3b4261;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.markdown-body h3 { font-size: 15px; }
+.markdown-body h4 { font-size: 14px; }
+.markdown-body p { margin: 6px 0; }
+.markdown-body ul,
+.markdown-body ol {
+  margin: 6px 0;
+  padding-left: 24px;
+}
+.markdown-body li {
+  margin: 3px 0;
+  padding-left: 2px;
+}
+.markdown-body li::marker { color: #565f89; }
+.markdown-body a {
+  color: #7aa2f7;
+  text-decoration: none;
+  border-bottom: 1px dotted #3b4261;
+}
+.markdown-body a:hover { text-decoration: underline; border-bottom-color: #7aa2f7; }
+.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 8px 14px;
+  border-left: 3px solid #7aa2f7;
+  background: rgba(122, 162, 247, 0.06);
+  border-radius: 0 6px 6px 0;
+}
+.markdown-body blockquote p { margin: 2px 0; }
+
+/* 表格 — 移动端横向滚动 */
+.markdown-body .table-wrapper,
+.markdown-body table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+}
+.markdown-body table {
+  display: table;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #3b4261;
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+.markdown-body th {
+  background: #24283b;
+  color: #7aa2f7;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.markdown-body td {
+  background: #1a1b26;
+}
+.markdown-body tr:nth-child(even) td {
+  background: #1f2132;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid #3b4261;
+  margin: 16px 0;
+}
+
+/* 代码块 */
+.markdown-body pre {
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: #1f2132;
+  border: 1px solid #3b4261;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.markdown-body pre code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #c0caf5;
+  background: none;
+  padding: 0;
+}
+/* 行内代码 — 路径/文件名高亮 */
+.markdown-body :not(pre) > code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  background: rgba(122, 162, 247, 0.12);
+  color: #7dcfff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  border: 1px solid rgba(122, 162, 247, 0.15);
+}
+.markdown-body strong { color: #c0caf5; font-weight: 600; }
+.markdown-body em { color: #a9b1d6; }
+
 /* 文本卡片 — assistant 消息 */
 .card-text .card-badge {
   background: rgba(122, 162, 247, 0.15);
   color: #7aa2f7;
 }
 
-.card-text pre {
-  margin: 4px 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #c0caf5;
+/* Thinking 折叠区域 */
+.thinking-section {
+  margin: 4px 0 10px;
 }
 
-.card-text .card-actions {
+.thinking-toggle {
   display: flex;
+  align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  width: 100%;
+  background: rgba(187, 154, 247, 0.08);
+  color: #bb9af7;
+  border: 1px solid rgba(187, 154, 247, 0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.card-text .card-actions button {
+.thinking-toggle:hover {
+  background: rgba(187, 154, 247, 0.18);
+}
+
+.thinking-icon {
+  font-size: 10px;
+  width: 14px;
+  text-align: center;
+}
+
+.thinking-label {
+  font-weight: 600;
+}
+
+.thinking-hint {
+  margin-left: auto;
+  color: #565f89;
+  font-size: 10px;
+}
+
+.thinking-content {
+  margin-top: 6px;
+  padding: 12px 14px;
+  background: rgba(187, 154, 247, 0.05);
+  border-left: 3px solid #bb9af7;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  color: #9aa5ce;
+  line-height: 1.6;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.thinking-content p { margin: 3px 0; }
+.thinking-content code {
+  background: rgba(187, 154, 247, 0.1);
+  color: #c0aaf7;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* Copy 按钮 */
+.btn-copy {
+  margin-left: auto;
   background: none;
-  border: none;
+  border: 1px solid #3b4261;
+  border-radius: 4px;
   color: #565f89;
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  transition: background 0.15s, color 0.15s;
 }
 
-.card-text .card-actions button:hover {
+.btn-copy:hover {
   background: #24283b;
   color: #a9b1d6;
 }
+
 
 /* 用户消息 */
 .card-user {
@@ -314,6 +503,8 @@
   font-size: 12px;
   color: #565f89;
   font-style: italic;
+  text-align: center;
+  padding: 2px 0;
 }
 
 /* session 事件 */
@@ -473,16 +664,18 @@
   background: #89b4fa;
 }
 
-.input-bar .btn-stop {
-  background: transparent;
-  color: #f7768e;
-  border: 1px solid #f7768e;
+.input-bar .btn-stop-action {
+  background: #f7768e;
+  color: #1a1b26;
+  border: none;
   border-radius: 6px;
   padding: 10px 18px;
   font-family: inherit;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   min-height: 44px;
+  animation: pulse 2s infinite;
 }
 
 /* 空状态 */
@@ -579,6 +772,129 @@
   .btn {
     font-size: 12px;
     padding: 4px 10px;
+  }
+}
+
+/* 全面移动端响应式优化 */
+@media (max-width: 480px) {
+  .terminal {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* 消息卡片减少内边距 */
+  .card {
+    padding: 4px 10px;
+  }
+
+  /* 输入栏优化 */
+  .input-bar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .input-bar textarea {
+    font-size: 16px; /* 防止 iOS 缩放 */
+    padding: 8px 10px;
+    min-height: 40px;
+  }
+
+  .input-bar .btn-send,
+  .input-bar .btn-stop {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+
+  /* 会话栏紧凑布局 */
+  .session-bar {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .session-bar select {
+    font-size: 11px;
+    padding: 4px 6px;
+    min-height: 32px;
+    max-width: 90px;
+  }
+
+  .btn {
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 32px;
+  }
+
+  /* 连接栏紧凑 */
+  .conn-bar {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-height: 24px;
+  }
+
+  .conn-sid {
+    display: none;
+  }
+
+  /* Markdown 内容适配 */
+  .markdown-body h1 { font-size: 16px; }
+  .markdown-body h2 { font-size: 14px; }
+  .markdown-body h3 { font-size: 13px; }
+  .markdown-body pre {
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+  .markdown-body table {
+    font-size: 10px;
+  }
+  .markdown-body th,
+  .markdown-body td {
+    padding: 2px 4px;
+  }
+
+  /* 滚动到底部按钮适配 */
+  .scroll-bottom {
+    right: 10px;
+    bottom: 70px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  /* 权限卡片按钮 */
+  .card-permission .permission-actions button {
+    padding: 8px 16px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+}
+
+/* 中等屏幕 (平板) */
+@media (min-width: 481px) and (max-width: 768px) {
+  .terminal {
+    font-size: 14px;
+  }
+
+  .card {
+    padding: 6px 14px;
+  }
+
+  .input-bar {
+    padding: 8px 14px;
+  }
+}
+
+/* 宽屏优化 */
+@media (min-width: 769px) {
+  .terminal {
+    max-width: 720px;
+    margin: 0 auto;
+    border-left: 1px solid #3b4261;
+    border-right: 1px solid #3b4261;
+  }
+
+  .card {
+    padding: 8px 20px;
   }
 }
 /* Relay 模式样式 */

@@ -1,28 +1,39 @@
-// 渲染 text 事件 — assistant 文本消息，支持简易 Markdown
-import type { TextEvent } from '../../../core/ws/types';
-import { useState } from 'react';
+// 渲染 text 事件 — assistant 文本消息，支持完整 Markdown + thinking 折叠
+import type { TextEvent, TextDeltaEvent } from '../../../core/ws/types';
+import { useState, useMemo } from 'react';
+import { marked } from 'marked';
 
-// 简易 Markdown 渲染
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
+
 function renderMarkdown(text: string): string {
   if (!text) return '';
-  let result = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  // 代码块
-  result = result.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code class="${lang || ''}">${code}</code></pre>`);
-  // 行内代码
-  result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // 粗体
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // 换行
-  result = result.replace(/\n/g, '<br>');
-  return result;
+  try {
+    let html = marked.parse(text) as string;
+    // 将 table 包裹在滚动容器中，适配移动端
+    html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
+    html = html.replace(/<\/table>/g, '</table></div>');
+    return html;
+  } catch {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+  }
 }
 
-export function TextCard({ event }: { event: TextEvent }) {
+export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   const [copied, setCopied] = useState(false);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const html = useMemo(() => renderMarkdown(event.text), [event.text]);
+  const thinkingHtml = useMemo(
+    () => (event.thinking ? renderMarkdown(event.thinking) : ''),
+    [event.thinking]
+  );
+  const hasThinking = !!event.thinking;
 
   const copy = async () => {
     try {
@@ -41,14 +52,38 @@ export function TextCard({ event }: { event: TextEvent }) {
         <span style={{ color: '#565f89', fontSize: 11 }}>
           {formatTime(event.time)}
         </span>
-      </header>
-      <div className="markdown-body"
-           dangerouslySetInnerHTML={{ __html: renderMarkdown(event.text) }} />
-      <div className="card-actions">
-        <button onClick={copy} aria-label="copy">
-          {copied ? '已复制' : 'copy'}
+        <button
+          className="btn-copy"
+          onClick={copy}
+          aria-label="复制回复"
+        >
+          {copied ? '已复制' : '📋'}
         </button>
-      </div>
+      </header>
+
+      {hasThinking && (
+        <div className="thinking-section">
+          <button
+            className="thinking-toggle"
+            onClick={() => setThinkingOpen(!thinkingOpen)}
+          >
+            <span className="thinking-icon">{thinkingOpen ? '▼' : '▶'}</span>
+            <span className="thinking-label">思考过程</span>
+            <span className="thinking-hint">
+              {thinkingOpen ? '点击收起' : '点击展开'}
+            </span>
+          </button>
+          {thinkingOpen && (
+            <div
+              className="thinking-content"
+              dangerouslySetInnerHTML={{ __html: thinkingHtml }}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="markdown-body"
+           dangerouslySetInnerHTML={{ __html: html }} />
     </article>
   );
 }

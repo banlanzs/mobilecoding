@@ -10,6 +10,7 @@ type EventType string
 
 const (
 	EventText           EventType = "text"
+	EventTextDelta      EventType = "text_delta"
 	EventLifecycle      EventType = "lifecycle"
 	EventToolUse        EventType = "tool_use"
 	EventToolResult     EventType = "tool_result"
@@ -25,16 +26,28 @@ type Event struct {
 	SessionID  string    `json:"sessionId"`
 	Time       time.Time `json:"time"`
 	Text       string    `json:"text,omitempty"`
+	Thinking   string    `json:"thinking,omitempty"` // 模型思考过程，折叠展示
 	Message    string    `json:"message,omitempty"`
 	// 扩展字段
 	ToolName   string    `json:"toolName,omitempty"`
 	ToolInput  any       `json:"toolInput,omitempty"`
 	ToolResult any       `json:"toolResult,omitempty"`
+	BlockIndex int       `json:"blockIndex,omitempty"` // text_delta 所属的文本块序号
 }
 
 // TextEvent 构造一个文本事件。
 func TextEvent(sid, text string) Event {
 	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text}
+}
+
+// TextEventWithThinking 构造一个带思考过程的文本事件。
+func TextEventWithThinking(sid, text, thinking string) Event {
+	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text, Thinking: thinking}
+}
+
+// TextDeltaEvent 构造一个增量文本事件（流式输出）。
+func TextDeltaEvent(sid, text string, blockIndex int) Event {
+	return Event{Type: EventTextDelta, SessionID: sid, Time: time.Now().UTC(), Text: text, BlockIndex: blockIndex}
 }
 
 // LifecycleEvent 构造一个生命周期事件。

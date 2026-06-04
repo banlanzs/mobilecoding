@@ -43,6 +43,7 @@ type Config struct {
 	LogLevel      string
 	DefaultCmd    string
 	DefaultArgs   []string
+	Models        string // 逗号分隔的模型列表: label1:value1,label2:value2
 	AuthDir       string
 	StoreDir      string
 	WatchdogWarn1 string
@@ -99,6 +100,7 @@ func Load() (Config, error) {
 		LogLevel:    env.LogLevel,
 		DefaultCmd:  env.DefaultCmd,
 		DefaultArgs: SplitArgs(os.ExpandEnv(env.DefaultArgs)),
+		Models:      env.Models,
 	}.WithDefaults()
 	return c, nil
 }

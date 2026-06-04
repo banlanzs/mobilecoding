@@ -18,6 +18,7 @@ import (
 
 // ClaudeRunner 启动 claude --print ... "message"，
 // 每条消息启动新进程，通过 --resume 保持多轮对话上下文。
+// stdin 管道用于权限应答等中间交互。
 type ClaudeRunner struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
@@ -33,6 +34,7 @@ type ClaudeRunner struct {
 	logWindow *LogWindow
 
 	resumeSessionID string // Claude 内部 session id，用于 --resume
+	currentStdin    io.WriteCloser // 当前运行进程的 stdin（用于权限应答）
 }
 
 func NewClaudeRunner() *ClaudeRunner {
@@ -109,6 +111,10 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 	if err != nil {
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start claude: %w", err)
@@ -116,7 +122,9 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 
 	r.mu.Lock()
 	r.cmd = cmd
+	r.stdin = stdin
 	r.stdout = stdout
+	r.currentStdin = stdin
 	r.started = true
 	r.mu.Unlock()
 
@@ -164,6 +172,21 @@ func (r *ClaudeRunner) killProcess() {
 	}
 }
 
+
+// SendToStdin 写入当前运行进程的 stdin（不杀进程）。
+// 用于权限应答、--permission-prompt-tool stdio 等中间交互。
+func (r *ClaudeRunner) SendToStdin(p []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.currentStdin == nil {
+		return errors.New("no active process stdin")
+	}
+	if r.closed {
+		return errors.New("runner is closed")
+	}
+	_, err := r.currentStdin.Write(p)
+	return err
+}
 
 func (r *ClaudeRunner) Resize(cols, rows int) error {
 	return nil

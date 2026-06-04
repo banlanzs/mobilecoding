@@ -99,6 +99,8 @@ func (r *PipeRunner) Write(p []byte) error {
 	return err
 }
 
+func (r *PipeRunner) SendToStdin(p []byte) error { return r.Write(p) }
+
 func (r *PipeRunner) Resize(_, _ int) error {
 	return nil
 }

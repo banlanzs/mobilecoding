@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -92,10 +93,73 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 			if text == "" && thinking == "" {
 				return Event{}, errors.New("empty message")
 			}
+			// 剥离内联 <think> 标签
+			if strippedThink, strippedText := stripThinkTags(text); strippedThink != "" {
+				if thinking != "" {
+					thinking = thinking + "\n\n" + strippedThink
+				} else {
+					thinking = strippedThink
+				}
+				text = strippedText
+			}
 			if text == "" {
-				return LifecycleEvent(sid, "thinking"), nil
+				// 仅思考阶段：不暴露内容，只显示简短指示器
+				if thinking != "" {
+					return LifecycleEvent(sid, "思考中…"), nil
+				}
+				return Event{}, errors.New("empty message")
+			}
+			if thinking != "" {
+				return TextEventWithThinking(sid, text, thinking), nil
 			}
 			return TextEvent(sid, text), nil
+	case "content_block_start":
+		// 记录文本块开始，不做展示
+		return Event{}, errors.New("skip content_block_start")
+	case "content_block_delta":
+		delta, ok := m["delta"].(map[string]any)
+		if !ok {
+			return Event{}, errors.New("missing delta")
+		}
+		deltaType, _ := delta["type"].(string)
+		blockIndex := 0
+		if idx, ok := m["index"].(float64); ok {
+			blockIndex = int(idx)
+		}
+
+		switch deltaType {
+		case "text_delta":
+			text, _ := delta["text"].(string)
+			if text == "" {
+				return Event{}, errors.New("empty text delta")
+			}
+			// 剥离内联 <think> 标签
+			think, cleanText := stripThinkTags(text)
+			if cleanText == "" && think != "" {
+				return TextDeltaEvent(sid, think, blockIndex), nil
+			}
+			if cleanText == "" {
+				return Event{}, errors.New("empty after stripping think tags")
+			}
+			ev := TextDeltaEvent(sid, cleanText, blockIndex)
+			if think != "" {
+				ev.Thinking = think
+			}
+			return ev, nil
+
+		case "thinking_delta":
+			thinkText, _ := delta["thinking"].(string)
+			if thinkText == "" {
+				return Event{}, errors.New("empty thinking delta")
+			}
+			// 将 thinking delta 作为 text_delta 发送（前端会渲染在思考区域）
+			ev := TextDeltaEvent(sid, "", blockIndex)
+			ev.Thinking = thinkText
+			return ev, nil
+
+		default:
+			return Event{}, errors.New("skip non-text delta")
+		}
 	case "tool_use":
 		name, _ := m["name"].(string)
 		input := m["input"]
@@ -159,4 +223,42 @@ func extractClaudeContent(message any) (string, string) {
 		return strings.Join(responseParts, ""), strings.Join(thinkingParts, "")
 	}
 	return "", ""
+}
+
+// truncateThinking 截断思考内容用于生命周期事件显示。
+func truncateThinking(thinking string) string {
+	if thinking == "" {
+		return "..."
+	}
+	const maxLen = 80
+	if utf8.RuneCountInString(thinking) > maxLen {
+		runes := []rune(thinking)
+		return string(runes[:maxLen]) + "..."
+	}
+	return thinking
+}
+
+// stripThinkTags 从文本中剥离 <think>...</think> 标签。
+// 返回 (thinking内容, 清理后的文本)。
+func stripThinkTags(text string) (string, string) {
+	const open = "<think>"
+	const close = "</think>"
+
+	var thinkingParts []string
+	result := text
+
+	for {
+		start := strings.Index(result, open)
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result, close)
+		if end == -1 || end < start+len(open) {
+			break
+		}
+		thinkingParts = append(thinkingParts, result[start+len(open):end])
+		result = result[:start] + result[end+len(close):]
+	}
+
+	return strings.TrimSpace(strings.Join(thinkingParts, "\n\n")), strings.TrimSpace(result)
 }

@@ -27,6 +27,7 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
+	Models      string   // 逗号分隔: label:value,...
 	Relay       *relay.Server // Relay 中继服务器
 }
 
@@ -37,13 +38,25 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	r.Get("/api/v1/models", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 从配置解析，或使用默认列表
+		raw := deps.Models
+		if raw == "" {
+			raw = "默认模型:,Sonnet 4.6:claude-sonnet-4-6,Opus 4.8:claude-opus-4-8,Haiku 4.5:claude-haiku-4-5"
+		}
+		models := parseModels(raw)
+		_ = json.NewEncoder(w).Encode(models)
+	})
 	r.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		cwd, _ := os.Getwd()
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"version": deps.Version,
 			"runtime": map[string]any{
 				"defaultCommand": deps.DefaultCmd,
 				"defaultArgs":    deps.DefaultArgs,
+				"cwd":            cwd,
 			},
 		})
 	})
@@ -128,6 +141,31 @@ func claudeSettingsHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(settings)
 	}
+}
+
+// parseModels 解析 "label:value,label:value" 格式的模型列表。
+func parseModels(raw string) []map[string]string {
+	var models []map[string]string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// 支持 "label:value" 和 "label:" (空值) 两种格式
+		idx := strings.Index(part, ":")
+		if idx < 0 {
+			models = append(models, map[string]string{"label": part, "value": part})
+		} else {
+			models = append(models, map[string]string{
+				"label": part[:idx],
+				"value": part[idx+1:],
+			})
+		}
+	}
+	if len(models) == 0 {
+		models = append(models, map[string]string{"label": "默认模型", "value": ""})
+	}
+	return models
 }
 
 func deviceCertHandler(ca *auth.CA) http.HandlerFunc {

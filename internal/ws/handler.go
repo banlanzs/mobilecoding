@@ -3,7 +3,6 @@ package ws
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/logx"
@@ -124,6 +123,8 @@ func (h *Handler) dispatch(ctx context.Context, env Envelope) (*Envelope, any) {
 		return h.handleInput(env)
 	case "session.stop":
 		return h.handleStop(env)
+	case "session.permission.answer":
+		return h.handlePermissionAnswer(env)
 	default:
 		return newErrorRespPtr(env.ID, "not_found", "unknown method: "+env.Method), nil
 	}
@@ -175,13 +176,26 @@ func (h *Handler) handleInput(env Envelope) (*Envelope, any) {
 	if err := json.Unmarshal(env.Params, &p); err != nil {
 		return newErrorRespPtr(env.ID, "protocol_error", "invalid params"), nil
 	}
-	inp := strings.TrimSpace(p.Text)
-	if len(inp) > 50 {
-		inp = inp[:50] + "..."
-	}
-	h.logger.Debug("session", "input: sessionId=%s text=%q", p.SessionID, inp)
+	h.logger.Debug("session", "input: sessionId=%s len=%d", p.SessionID, len(p.Text))
 	if err := h.mgr.Write([]byte(p.Text + "\n")); err != nil {
 		h.logger.Error("session", "write input failed: err=%v", err)
+		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
+	}
+	ok := true
+	return &Envelope{Type: "resp", ID: env.ID, OK: &ok}, nil
+}
+
+func (h *Handler) handlePermissionAnswer(env Envelope) (*Envelope, any) {
+	var p struct {
+		Allow    bool   `json:"allow"`
+		ToolName string `json:"toolName"`
+	}
+	if err := json.Unmarshal(env.Params, &p); err != nil {
+		return newErrorRespPtr(env.ID, "protocol_error", "invalid params"), nil
+	}
+	h.logger.Info("session", "permission answer: tool=%s allow=%v", p.ToolName, p.Allow)
+	if err := h.mgr.SendToStdin(engine.PermissionAnswer(p.Allow, p.ToolName)); err != nil {
+		h.logger.Error("session", "permission answer write failed: %v", err)
 		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
 	}
 	ok := true

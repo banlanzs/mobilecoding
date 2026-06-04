@@ -2,7 +2,10 @@
 // 不同 AI CLI（claude / codex / 任意 LLM CLI）通过不同 Runner 实现接入。
 package engine
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 type EventKind string
 
@@ -47,6 +50,20 @@ type Runner interface {
 
 	SessionID() string
 
+	// SendToStdin 写入运行中进程的 stdin，不杀进程。
+	// 用于权限应答等中间交互场景。
+	SendToStdin(p []byte) error
+
 	InteractiveStateProvider
 	TurnStateProvider
+}
+
+// PermissionAnswer 构造 Claude stream-json 权限应答。
+func PermissionAnswer(allow bool, toolName string) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"type":      "permission_answer",
+		"allow":     allow,
+		"tool_name": toolName,
+	})
+	return append(b, '\n')
 }

@@ -11,6 +11,7 @@ type EnvOverrides struct {
 	LogLevel    string
 	DefaultCmd  string
 	DefaultArgs string
+	Models      string // 逗号分隔的模型列表: label1:value1,label2:value2
 }
 
 // FromEnv 从环境变量读取覆盖项。空值表示未设置。
@@ -24,6 +25,7 @@ func FromEnv() EnvOverrides {
 		LogLevel:    firstEnv("MOBILECODING_LOG_LEVEL", "MYTOOL_LOG_LEVEL"),
 		DefaultCmd:  firstEnv("MOBILECODING_DEFAULT_COMMAND", "MYTOOL_DEFAULT_COMMAND"),
 		DefaultArgs: firstEnv("MOBILECODING_DEFAULT_ARGS", "MYTOOL_DEFAULT_ARGS"),
+		Models:      firstEnv("MOBILECODING_MODELS", "MYTOOL_MODELS"),
 	}
 }
 

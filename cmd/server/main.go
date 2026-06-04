@@ -188,6 +188,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		CA:          ca,
 		DefaultCmd:  cfg.DefaultCmd,
 		DefaultArgs: cfg.DefaultArgs,
+		Models:      cfg.Models,
 		Relay:       relayServer,
 	}, cfg.AuthToken)
 

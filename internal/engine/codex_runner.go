@@ -94,6 +94,8 @@ func (r *CodexRunner) Write(p []byte) error {
 	return err
 }
 
+func (r *CodexRunner) SendToStdin(p []byte) error { return r.Write(p) }
+
 func (r *CodexRunner) Resize(cols, rows int) error {
 	return nil
 }

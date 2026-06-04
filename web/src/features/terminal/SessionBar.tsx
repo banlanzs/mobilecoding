@@ -1,4 +1,4 @@
-// 会话控制栏：command 选择 + settings 下拉 + start/stop 按钮
+// 会话控制栏：command + model 选择 + settings 下拉 + start/stop 按钮
 import { useEffect, useState, useCallback } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
@@ -9,6 +9,11 @@ const COMMANDS = [
   { value: 'aichat', label: 'Aichat' },
 ];
 
+interface ModelOption {
+  value: string;
+  label: string;
+}
+
 interface ClaudeSetting {
   name: string;
   path: string;
@@ -17,9 +22,12 @@ interface ClaudeSetting {
 export function SessionBar() {
   const { state, sendStart, sendStop } = useChat();
   const [command, setCommand] = useState('claude');
+  const [model, setModel] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 模型列表（从服务端拉取）
+  const [models, setModels] = useState<ModelOption[]>([{ value: '', label: '默认模型' }]);
   // Claude 配置文件
   const [claudeSettings, setClaudeSettings] = useState<ClaudeSetting[]>([]);
   const [selectedSetting, setSelectedSetting] = useState<string>('');
@@ -32,7 +40,23 @@ export function SessionBar() {
 
   useEffect(() => {
     setError(null);
-  }, [command]);
+  }, [command, model]);
+
+  // 拉取模型列表
+  const fetchModels = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('mobilecoding.token');
+      const res = await fetch('/api/v1/models', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: ModelOption[] = await res.json();
+        setModels(data);
+      }
+    } catch {
+      // 保持默认列表
+    }
+  }, []);
 
   // 连接后拉取 Claude 配置列表
   const fetchClaudeSettings = useCallback(async () => {
@@ -56,20 +80,24 @@ export function SessionBar() {
   useEffect(() => {
     if (state.status === 'connected' && state.connectionMode === 'direct') {
       fetchClaudeSettings();
+      fetchModels();
     }
-  }, [state.status, state.connectionMode, fetchClaudeSettings]);
+  }, [state.status, state.connectionMode, fetchClaudeSettings, fetchModels]);
 
   const handleStart = async () => {
     setLoading(true);
     setError(null);
     try {
-      let args: string[] | undefined;
+      let args: string[] = [];
+
+      if (model) {
+        args.push('--model', model);
+      }
 
       if (command === 'claude' && selectedSetting) {
-        // 使用选中的 Claude 配置文件
-        args = ['--settings', selectedSetting];
+        args.push('--settings', selectedSetting);
       } else if (command === state.runtime.defaultCommand) {
-        args = state.runtime.defaultArgs;
+        args = [...args, ...state.runtime.defaultArgs];
       }
 
       await sendStart({ command, args });
@@ -112,7 +140,7 @@ export function SessionBar() {
     return (
       <div className="session-bar">
         {error && <div className="session-error">{error}</div>}
-        <span className="session-active">{command} (active)</span>
+        <span className="session-active">{command}{model ? ` (${model})` : ''} — active</span>
         <button className="btn btn-danger" onClick={handleStop}>
           Stop
         </button>
@@ -120,14 +148,16 @@ export function SessionBar() {
     );
   }
 
-  // 无会话：显示完整的 CLI 选择界面
+  // 无会话：显示完整选择界面
   return (
     <div className="session-bar">
       {error && <div className="session-error">{error}</div>}
+
       <select
         value={command}
         onChange={(e) => setCommand(e.target.value)}
         disabled={loading}
+        className="sel-command"
       >
         {COMMANDS.map((c) => (
           <option key={c.value} value={c.value}>
@@ -136,6 +166,23 @@ export function SessionBar() {
         ))}
       </select>
 
+      {/* 模型选择 — 仅 Claude 时显示 */}
+      {command === 'claude' && (
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          disabled={loading}
+          className="sel-model"
+          title="选择 AI 模型"
+        >
+          {models.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      )}
+
       {/* Claude 配置选择 */}
       {command === 'claude' && claudeSettings.length > 0 && (
         <select
@@ -143,6 +190,7 @@ export function SessionBar() {
           onChange={(e) => setSelectedSetting(e.target.value)}
           disabled={loading}
           title="选择 Claude 配置文件"
+          className="sel-settings"
         >
           {claudeSettings.map((s) => (
             <option key={s.path} value={s.path}>
@@ -152,13 +200,15 @@ export function SessionBar() {
         </select>
       )}
 
-      <button
-        className="btn btn-primary"
-        onClick={handleStart}
-        disabled={loading || state.status !== 'connected'}
-      >
-        {loading ? '启动中…' : 'Start'}
-      </button>
+      <div className="session-actions">
+        <button
+          className="btn btn-primary"
+          onClick={handleStart}
+          disabled={loading || state.status !== 'connected'}
+        >
+          {loading ? '启动中…' : 'Start'}
+        </button>
+      </div>
     </div>
   );
 }

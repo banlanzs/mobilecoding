@@ -16,6 +16,7 @@ import type {
   AppEvent,
   DisplayMessage,
   UserMessage,
+  TextDeltaEvent,
   SessionStartParams,
   SessionStartResult,
   PermissionRequestEvent,
@@ -23,6 +24,27 @@ import type {
 } from '../ws/types';
 
 const MAX_MESSAGES = 500;
+const STORED_MESSAGES_KEY = 'mobilecoding.messages';
+const MAX_STORED_MESSAGES = 200;
+
+function saveMessages(msgs: DisplayMessage[]): void {
+  try {
+    const toStore = msgs.slice(-MAX_STORED_MESSAGES);
+    localStorage.setItem(STORED_MESSAGES_KEY, JSON.stringify(toStore));
+  } catch {}
+}
+
+function loadMessages(): DisplayMessage[] {
+  try {
+    const raw = localStorage.getItem(STORED_MESSAGES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(-MAX_STORED_MESSAGES);
+  } catch {
+    return [];
+  }
+}
 
 export interface ChatState {
   status: ConnectionStatus;
@@ -64,10 +86,40 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, connectionMode: action.mode };
     case 'EVENT_RECEIVED': {
       const ev = action.event;
-      const messages = [...state.messages, ev as DisplayMessage];
+      let messages: DisplayMessage[];
+
+      if (ev.type === 'text_delta') {
+        // 增量文本：追加到最后一张 text_delta 卡片，或创建新卡片
+        const last = state.messages[state.messages.length - 1];
+        if (last && last.type === 'text_delta' && (last as TextDeltaEvent).blockIndex === ev.blockIndex) {
+          const lastDelta = last as TextDeltaEvent;
+          const merged: TextDeltaEvent = {
+            ...lastDelta,
+            text: lastDelta.text + ev.text,
+            thinking: lastDelta.thinking && ev.thinking
+              ? lastDelta.thinking + '\n\n' + ev.thinking
+              : (lastDelta.thinking || ev.thinking || undefined),
+          };
+          messages = [...state.messages.slice(0, -1), merged as DisplayMessage];
+        } else {
+          messages = [...state.messages, ev as DisplayMessage];
+        }
+      } else if (ev.type === 'text') {
+        // 完整文本：替换同一块的 text_delta 卡片
+        const last = state.messages[state.messages.length - 1];
+        if (last && last.type === 'text_delta') {
+          messages = [...state.messages.slice(0, -1), ev as DisplayMessage];
+        } else {
+          messages = [...state.messages, ev as DisplayMessage];
+        }
+      } else {
+        messages = [...state.messages, ev as DisplayMessage];
+      }
+
       if (messages.length > MAX_MESSAGES) {
         messages.splice(0, messages.length - MAX_MESSAGES);
       }
+      saveMessages(messages);
       const next: ChatState = {
         ...state,
         messages,
@@ -76,8 +128,8 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'permission_request') {
         next.permissionPrompt = ev;
       }
-      // 收到文本回复时结束 thinking
-      if (ev.type === 'text' || ev.type === 'lifecycle') {
+      // 收到文本回复时结束 thinking（text_delta 也代表已有回复）
+      if (ev.type === 'text' || ev.type === 'text_delta' || ev.type === 'lifecycle') {
         next.thinking = false;
       }
       return next;
@@ -93,6 +145,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (messages.length > MAX_MESSAGES) {
         messages.splice(0, messages.length - MAX_MESSAGES);
       }
+      saveMessages(messages);
       return { ...state, messages, thinking: true };
     }
     case 'PERMISSION_ANSWERED':
@@ -112,10 +165,10 @@ function savedSessionId(): string | null {
 const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
-  messages: [],
+  messages: loadMessages(),
   permissionPrompt: null,
   lastError: null,
-  runtime: { defaultCommand: '', defaultArgs: [] },
+  runtime: { defaultCommand: '', defaultArgs: [], cwd: '' },
   connectionMode: 'direct',
   thinking: false,
 };
@@ -126,6 +179,7 @@ interface ChatContextValue {
   sendStart: (params: SessionStartParams) => Promise<SessionStartResult>;
   sendInput: (text: string) => Promise<void>;
   sendStop: () => Promise<void>;
+  answerPermission: (allow: boolean, toolName: string) => Promise<void>;
   dismissPermission: () => void;
   connectRelay: (config: RelayConfig) => void;
   disconnectRelay: () => void;
@@ -291,12 +345,25 @@ export function ChatProvider({ children }: PropsWithChildren) {
     dispatch({ type: 'PERMISSION_ANSWERED' });
   }, []);
 
+  const answerPermission = useCallback(
+    async (allow: boolean, toolName: string): Promise<void> => {
+      dispatch({ type: 'PERMISSION_ANSWERED' });
+      if (state.connectionMode === 'relay' && relayClientRef.current) {
+        relayClientRef.current.sendPermissionAnswer(allow, toolName);
+      } else {
+        await client.answerPermission(allow, toolName);
+      }
+    },
+    [client, state.connectionMode]
+  );
+
   const value: ChatContextValue = {
     state,
     ws: client,
     sendStart,
     sendInput,
     sendStop,
+    answerPermission,
     dismissPermission,
     connectRelay,
     disconnectRelay,

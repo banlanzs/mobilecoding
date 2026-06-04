@@ -28,6 +28,7 @@ export function EventCard({ event }: { event: DisplayMessage }) {
 
   switch (event.type) {
     case 'text':
+    case 'text_delta':
       return <TextCard event={event} />;
     case 'tool_use':
       return <ToolUseCard event={event} />;
