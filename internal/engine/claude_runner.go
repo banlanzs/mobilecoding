@@ -163,6 +163,15 @@ func (r *ClaudeRunner) Write(p []byte) error {
 	return r.runClaude(content)
 }
 
+// Abort 中止当前请求：杀进程但不关 channels，session 可继续使用。
+func (r *ClaudeRunner) Abort() {
+	r.killProcess()
+	r.mu.Lock()
+	r.currentStdin = nil
+	r.started = false
+	r.mu.Unlock()
+}
+
 func (r *ClaudeRunner) killProcess() {
 	r.mu.Lock()
 	cmd := r.cmd
@@ -251,12 +260,21 @@ func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
 
 func (r *ClaudeRunner) waitLoop() {
 	err := r.cmd.Wait()
-	// 不关闭 channels，runner 保持活跃等待下一条消息
+	// 非阻塞发送，避免 Close() 关闭 channels 后 panic
 	if err != nil {
-		r.errors <- err
-		r.events <- Event{Kind: EventLifecycle, Message: "turn complete: " + err.Error()}
+		select {
+		case r.errors <- err:
+		default:
+		}
+		select {
+		case r.events <- Event{Kind: EventLifecycle, Message: "turn complete: " + err.Error()}:
+		default:
+		}
 	} else {
-		r.events <- Event{Kind: EventLifecycle, Message: "turn complete"}
+		select {
+		case r.events <- Event{Kind: EventLifecycle, Message: "turn complete"}:
+		default:
+		}
 	}
 }
 

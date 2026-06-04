@@ -42,11 +42,14 @@ export function SessionBar() {
     setError(null);
   }, [command, model]);
 
-  // 拉取模型列表
-  const fetchModels = useCallback(async () => {
+  // 拉取模型列表（可指定 settings 路径）
+  const fetchModels = useCallback(async (settingsPath?: string) => {
     try {
       const token = localStorage.getItem('mobilecoding.token');
-      const res = await fetch('/api/v1/models', {
+      const url = settingsPath
+        ? `/api/v1/models?settings=${encodeURIComponent(settingsPath)}`
+        : '/api/v1/models';
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -83,6 +86,13 @@ export function SessionBar() {
       fetchModels();
     }
   }, [state.status, state.connectionMode, fetchClaudeSettings, fetchModels]);
+
+  // 切换 settings 时重新拉取对应模型列表
+  useEffect(() => {
+    if (selectedSetting) {
+      fetchModels(selectedSetting);
+    }
+  }, [selectedSetting, fetchModels]);
 
   const handleStart = async () => {
     setLoading(true);

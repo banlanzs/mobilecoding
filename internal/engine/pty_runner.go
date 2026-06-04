@@ -51,6 +51,7 @@ func (r *PtyRunner) Write(p []byte) error {
 }
 
 func (r *PtyRunner) SendToStdin(p []byte) error { return r.Write(p) }
+func (r *PtyRunner) Abort()                       {}
 
 func (r *PtyRunner) Resize(cols, rows int) error {
 	r.mu.Lock()

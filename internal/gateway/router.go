@@ -38,10 +38,15 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	r.Get("/api/v1/models", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/api/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// 从配置解析，或使用默认列表
 		raw := deps.Models
+		// 如果传了 ?settings= 参数，从对应 settings 文件中读取模型配置
+		if settingsPath := r.URL.Query().Get("settings"); settingsPath != "" {
+			if custom := readSettingsModels(settingsPath); custom != "" {
+				raw = custom
+			}
+		}
 		if raw == "" {
 			raw = "默认模型:,Sonnet 4.6:claude-sonnet-4-6,Opus 4.8:claude-opus-4-8,Haiku 4.5:claude-haiku-4-5"
 		}
@@ -141,6 +146,32 @@ func claudeSettingsHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(settings)
 	}
+}
+
+// readSettingsModels 从 settings JSON 文件中提取模型配置。
+// 支持两种格式：
+//   - "models" 字段：逗号分隔的 label:value 列表
+//   - "env.ANTHROPIC_MODEL"：单个模型名
+func readSettingsModels(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return ""
+	}
+	// 检查 "models" 字段
+	if modelsRaw, ok := m["models"].(string); ok && modelsRaw != "" {
+		return modelsRaw
+	}
+	// 检查 env.ANTHROPIC_MODEL
+	if env, ok := m["env"].(map[string]any); ok {
+		if model, ok := env["ANTHROPIC_MODEL"].(string); ok && model != "" {
+			return "默认:," + model + ":" + model
+		}
+	}
+	return ""
 }
 
 // parseModels 解析 "label:value,label:value" 格式的模型列表。

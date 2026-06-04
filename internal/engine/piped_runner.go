@@ -100,6 +100,7 @@ func (r *PipeRunner) Write(p []byte) error {
 }
 
 func (r *PipeRunner) SendToStdin(p []byte) error { return r.Write(p) }
+func (r *PipeRunner) Abort()                      {}
 
 func (r *PipeRunner) Resize(_, _ int) error {
 	return nil

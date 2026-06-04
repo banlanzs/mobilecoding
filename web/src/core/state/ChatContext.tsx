@@ -65,6 +65,7 @@ type Action =
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
   | { type: 'PERMISSION_ANSWERED' }
+  | { type: 'ABORT_TURN' }
   | { type: 'ERROR'; error: string }
   | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
 
@@ -73,9 +74,12 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'STATUS_CHANGED':
       return { ...state, status: action.status, lastError: action.status === 'closed' ? state.lastError : null };
     case 'SESSION_STARTED': {
-      // 保存到 localStorage 以支持页面刷新恢复
-      try { localStorage.setItem('mobilecoding.sessionId', action.sessionId); } catch {}
-      return { ...state, sessionId: action.sessionId, lastError: null };
+      // 新会话启动，清除旧消息
+      try {
+        localStorage.setItem('mobilecoding.sessionId', action.sessionId);
+        localStorage.removeItem('mobilecoding.messages');
+      } catch {}
+      return { ...state, sessionId: action.sessionId, messages: [], lastError: null };
     }
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
@@ -150,6 +154,8 @@ function reducer(state: ChatState, action: Action): ChatState {
     }
     case 'PERMISSION_ANSWERED':
       return { ...state, permissionPrompt: null };
+    case 'ABORT_TURN':
+      return { ...state, thinking: false };
     case 'ERROR':
       return { ...state, lastError: action.error };
     default:
@@ -179,6 +185,7 @@ interface ChatContextValue {
   sendStart: (params: SessionStartParams) => Promise<SessionStartResult>;
   sendInput: (text: string) => Promise<void>;
   sendStop: () => Promise<void>;
+  abortTurn: () => Promise<void>;
   answerPermission: (allow: boolean, toolName: string) => Promise<void>;
   dismissPermission: () => void;
   connectRelay: (config: RelayConfig) => void;
@@ -345,6 +352,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
     dispatch({ type: 'PERMISSION_ANSWERED' });
   }, []);
 
+  const abortTurn = useCallback(async (): Promise<void> => {
+    dispatch({ type: 'ABORT_TURN' });
+    if (state.connectionMode === 'relay' && relayClientRef.current) {
+      relayClientRef.current.sendText(JSON.stringify({ type: 'session.abort' }));
+    } else {
+      await client.abortTurn();
+    }
+  }, [client, state.connectionMode]);
+
   const answerPermission = useCallback(
     async (allow: boolean, toolName: string): Promise<void> => {
       dispatch({ type: 'PERMISSION_ANSWERED' });
@@ -363,6 +379,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     sendStart,
     sendInput,
     sendStop,
+    abortTurn,
     answerPermission,
     dismissPermission,
     connectRelay,

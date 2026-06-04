@@ -123,6 +123,8 @@ func (h *Handler) dispatch(ctx context.Context, env Envelope) (*Envelope, any) {
 		return h.handleInput(env)
 	case "session.stop":
 		return h.handleStop(env)
+	case "session.abort":
+		return h.handleAbort(env)
 	case "session.permission.answer":
 		return h.handlePermissionAnswer(env)
 	default:
@@ -181,6 +183,13 @@ func (h *Handler) handleInput(env Envelope) (*Envelope, any) {
 		h.logger.Error("session", "write input failed: err=%v", err)
 		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
 	}
+	ok := true
+	return &Envelope{Type: "resp", ID: env.ID, OK: &ok}, nil
+}
+
+func (h *Handler) handleAbort(env Envelope) (*Envelope, any) {
+	h.logger.Info("session", "aborting current turn")
+	h.mgr.Abort()
 	ok := true
 	return &Envelope{Type: "resp", ID: env.ID, OK: &ok}, nil
 }

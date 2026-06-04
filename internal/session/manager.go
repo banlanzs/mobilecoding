@@ -134,6 +134,16 @@ func (m *Manager) Write(p []byte) error {
 	return run.Write(p)
 }
 
+// Abort 中止当前请求，保留 session 等待下一条消息。
+func (m *Manager) Abort() {
+	m.mu.Lock()
+	run := m.active
+	m.mu.Unlock()
+	if run != nil {
+		run.Abort()
+	}
+}
+
 // SendToStdin 写入当前活跃 runner 的 stdin（不杀进程）。
 func (m *Manager) SendToStdin(p []byte) error {
 	m.mu.Lock()

@@ -54,6 +54,9 @@ type Runner interface {
 	// 用于权限应答等中间交互场景。
 	SendToStdin(p []byte) error
 
+	// Abort 中止当前正在执行的请求（杀进程），保留 session 等待下一条消息。
+	Abort()
+
 	InteractiveStateProvider
 	TurnStateProvider
 }

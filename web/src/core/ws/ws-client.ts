@@ -95,6 +95,10 @@ export class WSClient {
     await this.send('session.permission.answer', { allow, toolName });
   }
 
+  async abortTurn(): Promise<void> {
+    await this.send('session.abort');
+  }
+
   async stopSession(): Promise<void> {
     await this.send('session.stop');
   }

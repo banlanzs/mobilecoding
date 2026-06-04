@@ -3,7 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
 export function InputBar() {
-  const { state, sendInput, sendStop } = useChat();
+  const { state, sendInput, abortTurn } = useChat();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -50,11 +50,11 @@ export function InputBar() {
     }
   };
 
-  const handleStop = async () => {
+  const handleAbort = async () => {
     try {
-      await sendStop();
+      await abortTurn();
     } catch (err) {
-      console.error('stop failed:', err);
+      console.error('abort failed:', err);
     }
   };
 
@@ -62,7 +62,7 @@ export function InputBar() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (isThinking) {
-        handleStop();
+        handleAbort();
       } else {
         handleSend();
       }
@@ -94,9 +94,9 @@ export function InputBar() {
         isThinking ? (
           <button
             className="btn-stop-action"
-            onClick={handleStop}
-            aria-label="停止"
-            title="停止 AI 回复"
+            onClick={handleAbort}
+            aria-label="中止请求"
+            title="中止当前 AI 请求"
           >
             ■
           </button>
