@@ -97,6 +97,10 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, connectionMode: action.mode };
     case 'EVENT_RECEIVED': {
       const ev = action.event;
+      // 按 messageId 去重（防止重连重复事件）
+      if ((ev as any).messageId && state.messages.some((m) => (m as any).messageId === (ev as any).messageId)) {
+        return state;
+      }
       let messages: DisplayMessage[];
 
       if (ev.type === 'text_delta') {
