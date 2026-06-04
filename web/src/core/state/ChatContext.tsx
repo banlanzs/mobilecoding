@@ -132,8 +132,8 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'permission_request') {
         next.permissionPrompt = ev;
       }
-      // 收到文本回复时结束 thinking（text_delta 也代表已有回复）
-      if (ev.type === 'text' || ev.type === 'text_delta' || ev.type === 'lifecycle') {
+      // 只有实际文本内容到达才结束 thinking（lifecycle 仅是指示器，不改变状态）
+      if (ev.type === 'text' || ev.type === 'text_delta') {
         next.thinking = false;
       }
       return next;

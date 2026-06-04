@@ -149,9 +149,9 @@ func claudeSettingsHandler() http.HandlerFunc {
 }
 
 // readSettingsModels 从 settings JSON 文件中提取模型配置。
-// 支持两种格式：
+// 支持三种格式：
 //   - "models" 字段：逗号分隔的 label:value 列表
-//   - "env.ANTHROPIC_MODEL"：单个模型名
+//   - env 中的 ANTHROPIC_*_MODEL 变量（Haiku/Sonnet/Opus/默认）
 func readSettingsModels(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -161,14 +161,29 @@ func readSettingsModels(path string) string {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return ""
 	}
-	// 检查 "models" 字段
+	// 优先：显式 "models" 字段
 	if modelsRaw, ok := m["models"].(string); ok && modelsRaw != "" {
 		return modelsRaw
 	}
-	// 检查 env.ANTHROPIC_MODEL
+	// 从 env 中提取所有 ANTHROPIC_*_MODEL
 	if env, ok := m["env"].(map[string]any); ok {
-		if model, ok := env["ANTHROPIC_MODEL"].(string); ok && model != "" {
-			return "默认:," + model + ":" + model
+		modelKeys := []struct{ key, label string }{
+			{"ANTHROPIC_DEFAULT_HAIKU_MODEL", "Haiku"},
+			{"ANTHROPIC_DEFAULT_SONNET_MODEL", "Sonnet"},
+			{"ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus"},
+			{"ANTHROPIC_MODEL", "默认"},
+		}
+		var parts []string
+		seen := map[string]bool{}
+		for _, mk := range modelKeys {
+			if v, ok := env[mk.key].(string); ok && v != "" && !seen[v] {
+				seen[v] = true
+				parts = append(parts, mk.label+":"+v)
+			}
+		}
+		if len(parts) > 0 {
+			// 确保 "默认模型" (空值) 在最前面
+			return "默认模型:," + strings.Join(parts, ",")
 		}
 	}
 	return ""

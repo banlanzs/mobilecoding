@@ -1,6 +1,6 @@
-// 渲染 text 事件 — assistant 文本消息，支持完整 Markdown + thinking 折叠
+// 渲染 text 事件 — assistant 文本消息，支持完整 Markdown + thinking 折叠 + 打字机动画
 import type { TextEvent, TextDeltaEvent } from '../../../core/ws/types';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { marked } from 'marked';
 
 marked.setOptions({
@@ -12,7 +12,6 @@ function renderMarkdown(text: string): string {
   if (!text) return '';
   try {
     let html = marked.parse(text) as string;
-    // 将 table 包裹在滚动容器中，适配移动端
     html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
     html = html.replace(/<\/table>/g, '</table></div>');
     return html;
@@ -25,10 +24,59 @@ function renderMarkdown(text: string): string {
   }
 }
 
+// 打字机动画：逐字揭示文本
+function useTypewriter(text: string, isDelta: boolean): string {
+  const [revealed, setRevealed] = useState(isDelta ? text : '');
+  const prevFull = useRef('');
+
+  useEffect(() => {
+    // text_delta 模式下直接全量显示（已经是增量的）
+    if (isDelta) {
+      setRevealed(text);
+      prevFull.current = text;
+      return;
+    }
+
+    // 文本未变化，跳过
+    if (text === prevFull.current) return;
+    prevFull.current = text;
+
+    // 短文本直接显示
+    if (text.length < 80) {
+      setRevealed(text);
+      return;
+    }
+
+    // 长文本：打字机动画（~40 步，约 1 秒完成）
+    setRevealed('');
+    let i = 0;
+    const totalSteps = 40;
+    const charsPerStep = Math.max(1, Math.ceil(text.length / totalSteps));
+    const timer = setInterval(() => {
+      i++;
+      const end = Math.min(i * charsPerStep, text.length);
+      setRevealed(text.slice(0, end));
+      if (end >= text.length) {
+        clearInterval(timer);
+      }
+    }, 25);
+    return () => clearInterval(timer);
+  }, [text, isDelta]);
+
+  // 确保最终显示完整文本
+  if (revealed.length < text.length && !isDelta && text.length < 80) {
+    return text;
+  }
+  return revealed || text;
+}
+
 export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   const [copied, setCopied] = useState(false);
   const [thinkingOpen, setThinkingOpen] = useState(false);
-  const html = useMemo(() => renderMarkdown(event.text), [event.text]);
+  const isDelta = event.type === 'text_delta';
+
+  const displayText = useTypewriter(event.text, isDelta);
+  const html = useMemo(() => renderMarkdown(displayText), [displayText]);
   const thinkingHtml = useMemo(
     () => (event.thinking ? renderMarkdown(event.thinking) : ''),
     [event.thinking]
