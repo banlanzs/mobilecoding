@@ -19,11 +19,11 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: go build -o mytool ./cmd/server
+        run: go build -o mobilecoding ./cmd/server
 
       - name: Smoke test
         run: |
-          MYTOOL_AUTH_TOKEN=test-ci ./mytool &
+          MOBILECODING_AUTH_TOKEN=test-ci ./mobilecoding &
           SERVER_PID=$!
           sleep 2
           curl -ks https://127.0.0.1:8443/healthz | grep -q ok

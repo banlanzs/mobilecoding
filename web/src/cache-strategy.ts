@@ -1,4 +1,4 @@
-const DB_NAME = 'mytool-sessions';
+const DB_NAME = 'mobilecoding-sessions';
 const STORE_NAME = 'events';
 const MAX_EVENTS = 50;
 

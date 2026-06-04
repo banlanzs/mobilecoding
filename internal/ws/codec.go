@@ -1,4 +1,4 @@
-// Package ws 实现 mytool WebSocket 协议（v1，JSON 编码）。
+// Package ws 实现 mobilecoding WebSocket 协议（v1，JSON 编码）。
 // 协议细节见 spec §4。
 package ws
 

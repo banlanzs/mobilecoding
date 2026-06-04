@@ -38,7 +38,7 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('push', (event: PushEvent) => {
-  const data = event.data?.json() ?? { title: 'mytool', body: 'New notification' };
+  const data = event.data?.json() ?? { title: 'mobilecoding', body: 'New notification' };
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,

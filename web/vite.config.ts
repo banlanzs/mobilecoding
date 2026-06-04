@@ -16,8 +16,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt'],
       manifest: {
-        name: 'mytool',
-        short_name: 'mytool',
+        name: 'mobilecoding',
+        short_name: 'mobilecoding',
         description: 'AI CLI 远程控制台',
         theme_color: '#1a1b26',
         background_color: '#1a1b26',

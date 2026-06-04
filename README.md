@@ -47,7 +47,7 @@
 
 | 功能 | 说明 |
 |---|---|
-| **日志聚合** | 启动日志写入 `~/.mytool/logs/`，7 天保留 |
+| **日志聚合** | 启动日志写入 `~/.mobilecoding/logs/`，7 天保留 |
 | **GitHub Actions** | CI (push/PR) + Release (tag push 跨平台编译) |
 | **npm 包** | `@banlan/mobilecoding`，一行命令安装 |
 
@@ -83,7 +83,7 @@ go build -o mobilecoding.exe ./cmd/server
 ### 自定义 token
 
 ```bash
-MYTOOL_AUTH_TOKEN=mysecrettoken ./mobilecoding.exe
+MOBILECODING_AUTH_TOKEN=mysecrettoken ./mobilecoding.exe
 ```
 
 ### npm 安装启动
@@ -101,12 +101,12 @@ mobilecoding start
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `MYTOOL_PORT` | `8443` | 监听端口 |
-| `MYTOOL_AUTH_TOKEN` | 自动生成 | 认证 token |
-| `MYTOOL_WORKSPACE` | `~/mobilecoding-workspace` | 工作区路径 |
-| `MYTOOL_MTLS` | `optional` | mTLS 模式 (optional / required) |
-| `MYTOOL_LOG_LEVEL` | `info` | 日志级别 (debug / info / warn / error) |
-| `MYTOOL_DEFAULT_COMMAND` | `claude` | 默认 AI 命令 |
+| `MOBILECODING_PORT` | `8443` | 监听端口 |
+| `MOBILECODING_AUTH_TOKEN` | 自动生成 | 认证 token |
+| `MOBILECODING_WORKSPACE` | `~/mobilecoding-workspace` | 工作区路径 |
+| `MOBILECODING_MTLS` | `optional` | mTLS 模式 (optional / required) |
+| `MOBILECODING_LOG_LEVEL` | `info` | 日志级别 (debug / info / warn / error) |
+| `MOBILECODING_DEFAULT_COMMAND` | `claude` | 默认 AI 命令 |
 
 ### 命令行参数
 

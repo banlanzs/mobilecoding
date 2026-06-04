@@ -13,7 +13,7 @@ func OpenLogFile(dir string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	name := "mytool-" + time.Now().Format("2006-01-02") + ".log"
+	name := "mobilecoding-" + time.Now().Format("2006-01-02") + ".log"
 	return os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 }
 
@@ -25,7 +25,7 @@ func CleanOldLogs(dir string, maxDays int) error {
 	}
 	cutoff := time.Now().AddDate(0, 0, -maxDays)
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "mytool-") {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "mobilecoding-") {
 			info, err := e.Info()
 			if err != nil {
 				continue

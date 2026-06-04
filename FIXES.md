@@ -279,7 +279,7 @@ npm run build
 ```
 
 ### 工作原理
-- `bin/mytool.js` 是 Node.js 启动器
+- `bin/mobilecoding.js` 是 Node.js 启动器
 - 自动查找并启动 Go 编译的二进制文件
 - 支持 `dist/mobilecoding.exe` 和 `dist/mobilecoding-{platform}-{arch}` 多种命名
 - 所有修复都在 Go 二进制中，与启动方式无关

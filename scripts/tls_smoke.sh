@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# tls_smoke.sh: 验证 mytool HTTPS 启动 + curl -k + mTLS 模式
+# tls_smoke.sh: 验证 mobilecoding HTTPS 启动 + curl -k + mTLS 模式
 set -euo pipefail
 
-PORT=${MYTOOL_TLS_PORT:-19644}
-TOKEN=${MYTOOL_TLS_TOKEN:-tls-token-$(date +%s)}
-HOME_DIR=${MYTOOL_TLS_HOME:-$HOME}
-AUTH_DIR="$HOME_DIR/.mytool/auth"
-BIN=${MYTOOL_TLS_BIN:-./mytool}
+PORT=${MOBILECODING_TLS_PORT:-19644}
+TOKEN=${MOBILECODING_TLS_TOKEN:-tls-token-$(date +%s)}
+HOME_DIR=${MOBILECODING_TLS_HOME:-$HOME}
+AUTH_DIR="$HOME_DIR/.mobilecoding/auth"
+BIN=${MOBILECODING_TLS_BIN:-./mobilecoding}
 
 # 清理旧凭据
 rm -rf "$AUTH_DIR"
 mkdir -p "$AUTH_DIR"
 
 # 启动（optional 模式）
-MYTOOL_HOME="$HOME_DIR" MYTOOL_AUTH_TOKEN="$TOKEN" MYTOOL_PORT="$PORT" \
-  "$BIN" --mtls=optional >/tmp/mytool-tls.log 2>&1 &
+MOBILECODING_HOME="$HOME_DIR" MOBILECODING_AUTH_TOKEN="$TOKEN" MOBILECODING_PORT="$PORT" \
+  "$BIN" --mtls=optional >/tmp/mobilecoding-tls.log 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true' EXIT
 
@@ -23,7 +23,7 @@ for i in {1..30}; do
   if curl -ks "https://127.0.0.1:$PORT/healthz" | grep -q ok; then break; fi
   sleep 0.2
 done
-curl -ks "https://127.0.0.1:$PORT/healthz" | grep -q ok || { echo "healthz failed" >&2; cat /tmp/mytool-tls.log; exit 1; }
+curl -ks "https://127.0.0.1:$PORT/healthz" | grep -q ok || { echo "healthz failed" >&2; cat /tmp/mobilecoding-tls.log; exit 1; }
 echo "✓ https healthz ok (with -k)"
 
 # 用自签 CA 验证
@@ -34,7 +34,7 @@ else
 fi
 
 # SPA
-curl -ks "https://127.0.0.1:$PORT/" | grep -q '<title>mytool</title>' || { echo "SPA failed" >&2; exit 1; }
+curl -ks "https://127.0.0.1:$PORT/" | grep -q '<title>mobilecoding</title>' || { echo "SPA failed" >&2; exit 1; }
 echo "✓ https SPA served"
 
 # ws 鉴权
@@ -46,8 +46,8 @@ echo "✓ https ws rejects missing token"
 kill $PID 2>/dev/null || true
 sleep 0.5
 
-MYTOOL_HOME="$HOME_DIR" MYTOOL_AUTH_TOKEN="$TOKEN" MYTOOL_PORT="$PORT" \
-  "$BIN" --mtls=required >/tmp/mytool-tls2.log 2>&1 &
+MOBILECODING_HOME="$HOME_DIR" MOBILECODING_AUTH_TOKEN="$TOKEN" MOBILECODING_PORT="$PORT" \
+  "$BIN" --mtls=required >/tmp/mobilecoding-tls2.log 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true' EXIT
 

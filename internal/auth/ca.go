@@ -40,9 +40,9 @@ func generateAndSaveCA(path string) (*CA, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{
-			CommonName:         "mytool",
+			CommonName:         "mobilecoding",
 			OrganizationalUnit: []string{"local"},
-			Organization:       []string{"mytool dev CA"},
+			Organization:       []string{"mobilecoding dev CA"},
 		},
 		NotBefore:             time.Now().Add(-1 * time.Hour),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),

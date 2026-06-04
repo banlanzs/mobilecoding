@@ -9,7 +9,7 @@
 dist/
 web/dist/
 cmd/server/web/
-mytool-*
+mobilecoding-*
 *.exe
 
 # 文档（本地规划文档，不入库）
@@ -28,4 +28,4 @@ Thumbs.db
 *.test
 *.out
 coverage.out
-mytool
+mobilecoding

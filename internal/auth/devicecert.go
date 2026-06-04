@@ -29,7 +29,7 @@ func IssueDeviceCert(ca *CA, deviceName string) (certPEM, keyPEM []byte, err err
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:         deviceName,
-			Organization:       []string{"mytool"},
+			Organization:       []string{"mobilecoding"},
 			OrganizationalUnit: []string{"device"},
 		},
 		NotBefore:   time.Now().Add(-1 * time.Hour),

@@ -58,8 +58,8 @@ func TestIssueDeviceCert_Verify(t *testing.T) {
 	if cert.Subject.CommonName != "my-phone" {
 		t.Errorf("CommonName = %q, want %q", cert.Subject.CommonName, "my-phone")
 	}
-	if len(cert.Subject.Organization) == 0 || cert.Subject.Organization[0] != "mytool" {
-		t.Errorf("Organization should contain mytool")
+	if len(cert.Subject.Organization) == 0 || cert.Subject.Organization[0] != "mobilecoding" {
+		t.Errorf("Organization should contain mobilecoding")
 	}
 
 	// 验证 KeyUsage

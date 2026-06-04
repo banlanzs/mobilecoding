@@ -2,9 +2,9 @@
   "name": "@banlan/mobilecoding",
   "version": "0.3.0",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
-  "main": "bin/mytool.js",
+  "main": "bin/mobilecoding.js",
   "bin": {
-    "mobilecoding": "bin/mytool.js",
+    "mobilecoding": "bin/mobilecoding.js",
     "mobilecoding-relay": "bin/relay.js",
     "mc": "bin/mc.js"
   },

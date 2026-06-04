@@ -25,7 +25,7 @@ jobs:
             arch="${pair#*/}"
             ext=""
             [ "$os" = "windows" ] && ext=".exe"
-            out="dist/mytool-${os}-${arch}${ext}"
+            out="dist/mobilecoding-${os}-${arch}${ext}"
             echo "Building $out"
             GOOS=$os GOARCH=$arch go build -o "$out" ./cmd/server
             chmod +x "$out"

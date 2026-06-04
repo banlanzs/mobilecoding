@@ -35,7 +35,7 @@ func LoadOrCreateServerCert(ca *CA, certPath, keyPath, ip, dns string) error {
 	}
 	csrTmpl := &x509.CertificateRequest{
 		Subject: pkix.Name{
-			CommonName:         "mytool",
+			CommonName:         "mobilecoding",
 			OrganizationalUnit: []string{"server"},
 			Organization:       []string{dns},
 		},

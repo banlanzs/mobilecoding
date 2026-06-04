@@ -1,4 +1,4 @@
-const DB_NAME = 'mytool-mtls';
+const DB_NAME = 'mobilecoding-mtls';
 const STORE_NAME = 'certs';
 
 export async function openCertDB(): Promise<IDBDatabase> {

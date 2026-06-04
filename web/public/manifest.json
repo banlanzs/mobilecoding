@@ -1,6 +1,6 @@
 {
-  "name": "mytool",
-  "short_name": "mytool",
+  "name": "mobilecoding",
+  "short_name": "mobilecoding",
   "description": "AI CLI 远程控制台",
   "start_url": "/",
   "display": "standalone",
