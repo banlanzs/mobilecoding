@@ -11,32 +11,91 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/engine"
 )
 
+// phaseTracker 追踪当前 Agent 阶段，用于发出配对的 start/end 事件。
+type phaseTracker struct {
+	inThinking bool
+	lastToolID string
+}
+
 // Project 把引擎事件翻译为投影事件。深度解析 Claude stream-json。
 func Project(in []engine.Event, sid string) []Event {
 	if sid == "" {
 		sid = "sess_" + uuid.NewString()
 	}
-	out := make([]Event, 0, len(in))
+	pt := &phaseTracker{}
+	out := make([]Event, 0, len(in)*2)
 	for _, ev := range in {
 		switch ev.Kind {
 		case engine.EventRaw:
-			// 尝试深度解析 Claude stream-json
 			parsed, err := parseClaudeEvent(ev.Data, sid)
 			if err == nil {
-				out = append(out, parsed)
+				out = pt.emitLifecycle(out, parsed, sid)
 			} else if !isJSON(ev.Data) {
-				// 非 JSON 数据：透传为文本
 				out = append(out, TextEvent(sid, strings.TrimRight(string(ev.Data), "\r\n")))
 			}
-			// JSON 但无法解析的：跳过（避免原始 JSON 泄露到前端）
 		case engine.EventLifecycle:
-			// 只转发用户可见的生命周期事件
 			if isUserVisibleLifecycle(ev.Message) {
 				out = append(out, LifecycleEvent(sid, ev.Message))
 			}
 		}
 	}
+	// 结束时关闭所有未配对的状态
+	if pt.inThinking {
+		out = append(out, ThinkingEndEvent(sid))
+	}
 	return out
+}
+
+// emitLifecycle 根据事件类型追踪阶段转换并发出配对事件。
+func (pt *phaseTracker) emitLifecycle(out []Event, ev Event, sid string) []Event {
+	switch ev.Type {
+	case EventTextDelta:
+		// thinking_delta 触发 thinking_start
+		if ev.Thinking != "" && !pt.inThinking {
+			out = append(out, ThinkingStartEvent(sid))
+			pt.inThinking = true
+		}
+		// text_delta (无 thinking) 触发 thinking_end
+		if ev.Thinking == "" && ev.Text != "" && pt.inThinking {
+			out = append(out, ThinkingEndEvent(sid))
+			pt.inThinking = false
+		}
+	case EventText:
+		if pt.inThinking {
+			out = append(out, ThinkingEndEvent(sid))
+			pt.inThinking = false
+		}
+	case EventToolUse:
+		if pt.inThinking {
+			out = append(out, ThinkingEndEvent(sid))
+			pt.inThinking = false
+		}
+		toolID := uuid.NewString()
+		ev.ToolID = toolID
+		pt.lastToolID = toolID
+		if ev.ToolName == "Bash" {
+			out = append(out, BashStartEvent(sid, toolID, formatToolInput(ev.ToolInput)))
+		}
+		out = append(out, ToolStartEvent(sid, toolID, ev.ToolName, ev.ToolInput))
+	case EventToolResult:
+		if pt.lastToolID != "" {
+			if ev.ToolName == "Bash" {
+				out = append(out, BashEndEvent(sid, pt.lastToolID))
+			}
+			out = append(out, ToolEndEvent(sid, pt.lastToolID, ev.ToolName))
+			pt.lastToolID = ""
+		}
+	}
+	out = append(out, ev)
+	return out
+}
+
+func formatToolInput(input any) string {
+	if s, ok := input.(string); ok {
+		return s
+	}
+	b, _ := json.Marshal(input)
+	return string(b)
 }
 
 // isJSON 判断数据是否为有效 JSON。

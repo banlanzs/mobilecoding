@@ -51,7 +51,16 @@ export type EventType =
   | 'permission_request'
   | 'plan_mode'
   | 'context_window'
-  | 'session';
+  | 'session'
+  | 'thinking_start'
+  | 'thinking_end'
+  | 'tool_start'
+  | 'tool_output'
+  | 'tool_end'
+  | 'bash_start'
+  | 'bash_output'
+  | 'bash_end'
+  | 'agent_state';
 
 export interface BaseEvent {
   type: EventType;
@@ -110,6 +119,46 @@ export interface SessionEvent extends BaseEvent {
   toolInput: unknown;
 }
 
+// 新增统一 Agent 事件
+export interface ThinkingStartEvent extends BaseEvent { type: 'thinking_start'; }
+export interface ThinkingEndEvent extends BaseEvent { type: 'thinking_end'; }
+export interface ToolStartEvent extends BaseEvent {
+  type: 'tool_start';
+  toolId: string;
+  toolName: string;
+  toolInput: unknown;
+}
+export interface ToolOutputEvent extends BaseEvent {
+  type: 'tool_output';
+  toolId: string;
+  toolOutput: string;
+}
+export interface ToolEndEvent extends BaseEvent {
+  type: 'tool_end';
+  toolId: string;
+  toolName: string;
+}
+export interface BashStartEvent extends BaseEvent {
+  type: 'bash_start';
+  toolId: string;
+  toolName: string;
+  toolInput: string;
+}
+export interface BashOutputEvent extends BaseEvent {
+  type: 'bash_output';
+  toolId: string;
+  toolOutput: string;
+}
+export interface BashEndEvent extends BaseEvent {
+  type: 'bash_end';
+  toolId: string;
+  toolName: string;
+}
+export interface AgentStateEvent extends BaseEvent {
+  type: 'agent_state';
+  state: string;
+}
+
 export type AppEvent =
   | TextEvent
   | TextDeltaEvent
@@ -119,7 +168,16 @@ export type AppEvent =
   | PermissionRequestEvent
   | PlanModeEvent
   | ContextWindowEvent
-  | SessionEvent;
+  | SessionEvent
+  | ThinkingStartEvent
+  | ThinkingEndEvent
+  | ToolStartEvent
+  | ToolOutputEvent
+  | ToolEndEvent
+  | BashStartEvent
+  | BashOutputEvent
+  | BashEndEvent
+  | AgentStateEvent;
 
 // 用户消息（前端合成，用于回显）
 export interface UserMessage {

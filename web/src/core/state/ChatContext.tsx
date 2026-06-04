@@ -46,6 +46,12 @@ function loadMessages(): DisplayMessage[] {
   }
 }
 
+export interface AgentStateInfo {
+  status: string;       // "idle" | "thinking" | "reading_files" | "editing_files" | "running_command"
+  toolName?: string;
+  since: number;        // Date.now() 时间戳
+}
+
 export interface ChatState {
   status: ConnectionStatus;
   sessionId: string | null;
@@ -55,6 +61,7 @@ export interface ChatState {
   runtime: RuntimeConfig;
   connectionMode: 'direct' | 'relay';
   thinking: boolean;
+  agentState: AgentStateInfo;
 }
 
 type Action =
@@ -83,7 +90,7 @@ function reducer(state: ChatState, action: Action): ChatState {
     }
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
-      return { ...state, sessionId: null, permissionPrompt: null, thinking: false };
+      return { ...state, sessionId: null, permissionPrompt: null, thinking: false, agentState: { status: 'idle', since: Date.now() } };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
     case 'SET_CONNECTION_MODE':
@@ -136,6 +143,11 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'text' || ev.type === 'text_delta') {
         next.thinking = false;
       }
+      // 更新 Agent 状态
+      const as = agentStateFromEvent(ev);
+      if (as) {
+        next.agentState = { ...state.agentState, ...as };
+      }
       return next;
     }
     case 'USER_MESSAGE_SENT': {
@@ -177,7 +189,25 @@ const initialState: ChatState = {
   runtime: { defaultCommand: '', defaultArgs: [], cwd: '' },
   connectionMode: 'direct',
   thinking: false,
+  agentState: { status: 'idle', since: Date.now() },
 };
+
+// 根据事件类型推导 Agent 状态
+function agentStateFromEvent(ev: AppEvent): Partial<AgentStateInfo> | null {
+  switch (ev.type) {
+    case 'thinking_start': return { status: 'thinking', since: Date.now() };
+    case 'tool_start':
+      if (/read|grep|glob|search|find|cat/i.test(ev.toolName)) return { status: 'reading_files', toolName: ev.toolName, since: Date.now() };
+      if (/edit|write|replace|patch|create/i.test(ev.toolName)) return { status: 'editing_files', toolName: ev.toolName, since: Date.now() };
+      return { status: 'running_command', toolName: ev.toolName, since: Date.now() };
+    case 'bash_start': return { status: 'running_command', toolName: 'Bash', since: Date.now() };
+    case 'thinking_end':
+    case 'tool_end':
+    case 'bash_end':
+      return { status: 'idle', since: Date.now() };
+    default: return null;
+  }
+}
 
 interface ChatContextValue {
   state: ChatState;

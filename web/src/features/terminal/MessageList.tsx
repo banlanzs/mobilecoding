@@ -52,7 +52,7 @@ export function MessageList() {
   return (
     <div className="message-list" ref={listRef}>
       {state.messages.map((msg, i) => (
-        <EventCard key={i} event={msg} />
+        <EventCard key={(msg as any).messageId || `m${i}`} event={msg} />
       ))}
       {state.thinking && (
         <div className="thinking-indicator">

@@ -44,6 +44,15 @@ export function EventCard({ event }: { event: DisplayMessage }) {
       return <LifecycleCard event={event} />;
     case 'session':
       return <SessionCard event={event} />;
+    // 新增统一 Agent 事件 — 暂时以 LifecycleCard 渲染
+    case 'thinking_start':
+    case 'thinking_end':
+    case 'tool_start':
+    case 'tool_end':
+    case 'bash_start':
+    case 'bash_end':
+    case 'agent_state':
+      return <LifecycleCard event={{ ...event, type: 'lifecycle', message: `[${event.type}]` }} />;
     default:
       return null;
   }

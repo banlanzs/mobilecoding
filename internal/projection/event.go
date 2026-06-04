@@ -3,21 +3,38 @@
 // 后续 MVP：加入 diff / permission / plan / context_window 等高级投影。
 package projection
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // EventType 区分投影后的事件类型。
 type EventType string
 
 const (
-	EventText           EventType = "text"
-	EventTextDelta      EventType = "text_delta"
-	EventLifecycle      EventType = "lifecycle"
-	EventToolUse        EventType = "tool_use"
-	EventToolResult     EventType = "tool_result"
-	EventPermissionReq  EventType = "permission_request"
-	EventPlanMode       EventType = "plan_mode"
-	EventContextWindow  EventType = "context_window"
-	EventSession        EventType = "session"
+	// 现有类型（保持向后兼容）
+	EventText          EventType = "text"
+	EventTextDelta     EventType = "text_delta"
+	EventLifecycle     EventType = "lifecycle"
+	EventToolUse       EventType = "tool_use"
+	EventToolResult    EventType = "tool_result"
+	EventPermissionReq EventType = "permission_request"
+	EventPlanMode      EventType = "plan_mode"
+	EventContextWindow EventType = "context_window"
+	EventSession       EventType = "session"
+
+	// 新增统一 Agent 事件类型
+	EventThinkingStart EventType = "thinking_start" // 思考开始
+	EventThinkingDelta EventType = "thinking_delta" // 思考增量
+	EventThinkingEnd   EventType = "thinking_end"   // 思考结束
+	EventToolStart     EventType = "tool_start"     // 工具开始执行
+	EventToolOutput    EventType = "tool_output"    // 工具流式输出
+	EventToolEnd       EventType = "tool_end"       // 工具执行完成
+	EventBashStart     EventType = "bash_start"     // Bash 命令开始
+	EventBashOutput    EventType = "bash_output"    // Bash 流式输出
+	EventBashEnd       EventType = "bash_end"       // Bash 命令完成
+	EventAgentState    EventType = "agent_state"    // Agent 状态变更
 )
 
 // Event 是投影后的事件（前端订阅的契约）。
@@ -29,58 +46,94 @@ type Event struct {
 	Thinking   string    `json:"thinking,omitempty"` // 模型思考过程，折叠展示
 	Message    string    `json:"message,omitempty"`
 	// 扩展字段
-	ToolName   string    `json:"toolName,omitempty"`
-	ToolInput  any       `json:"toolInput,omitempty"`
-	ToolResult any       `json:"toolResult,omitempty"`
-	BlockIndex int       `json:"blockIndex,omitempty"` // text_delta 所属的文本块序号
+	ToolName   string `json:"toolName,omitempty"`
+	ToolInput  any    `json:"toolInput,omitempty"`
+	ToolResult any    `json:"toolResult,omitempty"`
+	ToolOutput string `json:"toolOutput,omitempty"` // 流式工具输出
+	ToolID     string `json:"toolId,omitempty"`     // 工具调用唯一 ID
+	BlockIndex int    `json:"blockIndex,omitempty"` // text_delta 所属的文本块序号
+	MessageID  string `json:"messageId,omitempty"`  // 稳定消息标识符
+	State      string `json:"state,omitempty"`      // agent_state 的状态值
 }
 
-// TextEvent 构造一个文本事件。
+func newMessageID() string { return uuid.NewString() }
+
+// --- 现有构造器（保持不变）---
+
 func TextEvent(sid, text string) Event {
-	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text}
+	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text, MessageID: newMessageID()}
 }
 
-// TextEventWithThinking 构造一个带思考过程的文本事件。
 func TextEventWithThinking(sid, text, thinking string) Event {
-	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text, Thinking: thinking}
+	return Event{Type: EventText, SessionID: sid, Time: time.Now().UTC(), Text: text, Thinking: thinking, MessageID: newMessageID()}
 }
 
-// TextDeltaEvent 构造一个增量文本事件（流式输出）。
 func TextDeltaEvent(sid, text string, blockIndex int) Event {
-	return Event{Type: EventTextDelta, SessionID: sid, Time: time.Now().UTC(), Text: text, BlockIndex: blockIndex}
+	return Event{Type: EventTextDelta, SessionID: sid, Time: time.Now().UTC(), Text: text, BlockIndex: blockIndex, MessageID: newMessageID()}
 }
 
-// LifecycleEvent 构造一个生命周期事件。
 func LifecycleEvent(sid, message string) Event {
-	return Event{Type: EventLifecycle, SessionID: sid, Time: time.Now().UTC(), Message: message}
+	return Event{Type: EventLifecycle, SessionID: sid, Time: time.Now().UTC(), Message: message, MessageID: newMessageID()}
 }
 
-// ToolUseEvent 构造一个工具使用事件。
 func ToolUseEvent(sid, toolName string, input any) Event {
-	return Event{Type: EventToolUse, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, ToolInput: input}
+	return Event{Type: EventToolUse, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, ToolInput: input, MessageID: newMessageID()}
 }
 
-// ToolResultEvent 构造一个工具结果事件。
 func ToolResultEvent(sid, toolName string, result any) Event {
-	return Event{Type: EventToolResult, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, ToolResult: result}
+	return Event{Type: EventToolResult, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, ToolResult: result, MessageID: newMessageID()}
 }
 
-// PermissionRequestEvent 构造一个权限请求事件。
 func PermissionRequestEvent(sid, toolName, prompt string) Event {
-	return Event{Type: EventPermissionReq, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, Message: prompt}
+	return Event{Type: EventPermissionReq, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, Message: prompt, MessageID: newMessageID()}
 }
 
-// PlanModeEvent 构造一个计划模式事件。
 func PlanModeEvent(sid string, data any) Event {
-	return Event{Type: EventPlanMode, SessionID: sid, Time: time.Now().UTC(), ToolInput: data}
+	return Event{Type: EventPlanMode, SessionID: sid, Time: time.Now().UTC(), ToolInput: data, MessageID: newMessageID()}
 }
 
-// ContextWindowEvent 构造一个上下文窗口事件。
 func ContextWindowEvent(sid string, data any) Event {
-	return Event{Type: EventContextWindow, SessionID: sid, Time: time.Now().UTC(), ToolInput: data}
+	return Event{Type: EventContextWindow, SessionID: sid, Time: time.Now().UTC(), ToolInput: data, MessageID: newMessageID()}
 }
 
-// SessionEvent 构造一个会话事件。
 func SessionEvent(sid string, data any) Event {
-	return Event{Type: EventSession, SessionID: sid, Time: time.Now().UTC(), ToolInput: data}
+	return Event{Type: EventSession, SessionID: sid, Time: time.Now().UTC(), ToolInput: data, MessageID: newMessageID()}
+}
+
+// --- 新增统一 Agent 事件构造器 ---
+
+func ThinkingStartEvent(sid string) Event {
+	return Event{Type: EventThinkingStart, SessionID: sid, Time: time.Now().UTC(), MessageID: newMessageID()}
+}
+
+func ThinkingEndEvent(sid string) Event {
+	return Event{Type: EventThinkingEnd, SessionID: sid, Time: time.Now().UTC(), MessageID: newMessageID()}
+}
+
+func ToolStartEvent(sid, toolID, toolName string, input any) Event {
+	return Event{Type: EventToolStart, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolName: toolName, ToolInput: input, MessageID: newMessageID()}
+}
+
+func ToolOutputEvent(sid, toolID, output string) Event {
+	return Event{Type: EventToolOutput, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolOutput: output, MessageID: newMessageID()}
+}
+
+func ToolEndEvent(sid, toolID, toolName string) Event {
+	return Event{Type: EventToolEnd, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolName: toolName, MessageID: newMessageID()}
+}
+
+func BashStartEvent(sid, toolID, command string) Event {
+	return Event{Type: EventBashStart, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolName: "Bash", ToolInput: command, MessageID: newMessageID()}
+}
+
+func BashOutputEvent(sid, toolID, output string) Event {
+	return Event{Type: EventBashOutput, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolOutput: output, MessageID: newMessageID()}
+}
+
+func BashEndEvent(sid, toolID string) Event {
+	return Event{Type: EventBashEnd, SessionID: sid, Time: time.Now().UTC(), ToolID: toolID, ToolName: "Bash", MessageID: newMessageID()}
+}
+
+func AgentStateEvent(sid, state string) Event {
+	return Event{Type: EventAgentState, SessionID: sid, Time: time.Now().UTC(), State: state, MessageID: newMessageID()}
 }
