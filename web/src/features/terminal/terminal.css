@@ -76,6 +76,36 @@
   font-size: 11px;
 }
 
+/* Agent 状态栏 */
+.agent-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: #1f2132;
+  border-bottom: 1px solid #3b4261;
+  font-size: 11px;
+  flex-shrink: 0;
+  min-height: 22px;
+  transition: background 0.3s;
+}
+
+.agent-status-bar[data-status='thinking'] {
+  background: rgba(187, 154, 247, 0.08);
+}
+.agent-status-bar[data-status='reading_files'] {
+  background: rgba(122, 162, 247, 0.08);
+}
+.agent-status-bar[data-status='editing_files'] {
+  background: rgba(224, 175, 104, 0.08);
+}
+.agent-status-bar[data-status='running_command'] {
+  background: rgba(158, 206, 106, 0.08);
+}
+
+.agent-status-icon { font-size: 12px; }
+.agent-status-label { color: #565f89; }
+
 /* 会话控制栏 */
 .session-bar {
   display: flex;

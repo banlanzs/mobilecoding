@@ -1,6 +1,7 @@
 // 终端主页面 — mobile-first 全屏对话界面
 import { useChat } from '../../core/state/ChatContext';
 import { ConnectionBar } from './ConnectionBar';
+import { AgentStatusBar } from './AgentStatusBar';
 import { SessionBar } from './SessionBar';
 import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
@@ -33,6 +34,7 @@ export function TerminalPage() {
   return (
     <div className="terminal">
       <ConnectionBar />
+      <AgentStatusBar />
       <SessionBar />
       {state.lastError && (
         <div className="error-msg">{state.lastError}</div>
