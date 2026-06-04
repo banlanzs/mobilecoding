@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
-	"github.com/banlanzs/mobilecoding/internal/hook"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/ws"
@@ -28,9 +27,9 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
-	Models      string   // 逗号分隔: label:value,...
+	Models      string        // 逗号分隔: label:value,...
 	Relay       *relay.Server // Relay 中继服务器
-	HookHandler *hook.Handler // 可选：Claude Code HTTP hook 端点
+	// HookHandler 已移至独立 HTTP 监听器（startHookListener），不通过主 router 提供。
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -92,14 +91,11 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
 		r.Get("/claude-settings", claudeSettingsHandler())
+		r.Get("/hook-status", hookStatusHandler())
 	})
 
-	// Claude Code HTTP hook 端点（也用 Bearer 鉴权，与 settings.json 注入的 token 一致）
-	if deps.HookHandler != nil {
-		r.With(func(next http.Handler) http.Handler {
-			return auth.BearerMiddleware(authToken, next)
-		}).Post("/v1/hooks/permission-request", deps.HookHandler.ServeHTTP)
-	}
+	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
+	// 不再挂在主 router 上 —— 主端口是 HTTPS + 客户端证书/Token 鉴权，Claude CLI 无 cert。
 
 	// Relay 中继端点（不需要认证，使用配对码认证）
 	if deps.Relay != nil {
@@ -114,7 +110,101 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 	return r
 }
 
-// claudeSettingsHandler 扫描 ~/.claude/settings.*.json 并返回配置列表。
+// hookStatusHandler 返回 hook 注入状态（settings.json 是否包含 mobilecoding 标记的 PermissionRequest hook）。
+// 便于手机端排查权限弹窗问题：返回 { installed, settingsPath, hookURL }。
+func hookStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "cannot determine home dir", http.StatusInternalServerError)
+			return
+		}
+		settingsPath := filepath.Join(home, ".claude", "settings.json")
+		type hookInfo struct {
+			EventName   string `json:"eventName"`
+			URL         string `json:"url"`
+			HasMobilec  bool   `json:"hasMobilecodingMarker"`
+			TokenPrefix string `json:"tokenPrefix"`
+		}
+		type status struct {
+			Installed    bool       `json:"installed"`
+			SettingsPath string     `json:"settingsPath"`
+			SettingsErr  string     `json:"settingsError,omitempty"`
+			HookURL      string     `json:"hookUrl,omitempty"`
+			Hooks        []hookInfo `json:"hooks"`
+		}
+		out := status{SettingsPath: settingsPath}
+		data, err := os.ReadFile(settingsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				out.SettingsErr = "settings.json not found"
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(out)
+				return
+			}
+			out.SettingsErr = err.Error()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
+		var settings map[string]any
+		if err := json.Unmarshal(data, &settings); err != nil {
+			out.SettingsErr = "parse error: " + err.Error()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
+		hooks, _ := settings["hooks"].(map[string]any)
+		if hooks == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(out)
+			return
+		}
+		for eventName, raw := range hooks {
+			list, _ := raw.([]any)
+			for _, item := range list {
+				m, _ := item.(map[string]any)
+				if m == nil {
+					continue
+				}
+				hs, _ := m["hooks"].([]any)
+				for _, h := range hs {
+					hm, _ := h.(map[string]any)
+					if hm == nil {
+						continue
+					}
+					if hm["_mobilecoding"] != "mobilecoding-hook" {
+						continue
+					}
+					out.Installed = true
+					url, _ := hm["url"].(string)
+					out.HookURL = url
+					headers, _ := hm["headers"].(map[string]any)
+					token, _ := headers["Authorization"].(string)
+					tokenPrefix := ""
+					if strings.HasPrefix(token, "Bearer ") {
+						tokenPrefix = "Bearer " + token[len("Bearer "):min(8, len(token)-7)]
+					}
+					out.Hooks = append(out.Hooks, hookInfo{
+						EventName:   eventName,
+						URL:         url,
+						HasMobilec:  true,
+						TokenPrefix: tokenPrefix,
+					})
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 // 返回格式：[{ name: "axonhub", path: "C:/Users/xxx/.claude/settings.axonhub.json" }, ...]
 func claudeSettingsHandler() http.HandlerFunc {
 	type settingEntry struct {

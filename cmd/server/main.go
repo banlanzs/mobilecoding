@@ -7,11 +7,14 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
 	"github.com/banlanzs/mobilecoding/internal/config"
@@ -190,9 +193,17 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	})
 	wsHandler.SetHookRegistry(hookRegistry)
 
-	// 自动注入 hook 到 ~/.claude/settings.json
-	if err := installClaudeHook(cfg, logger); err != nil {
-		logger.Warn("startup", "install Claude hook: %v (continue without)", err)
+	// 独立 HTTP 监听器（仅 127.0.0.1）服务 hook 端点，避开主端口的 HTTPS。
+	// Claude CLI 的 HTTP POST 在 plain HTTP 上才能工作（无 cert 信任问题），且仅本地可达足够安全。
+	hookListener, hookURL, err := startHookListener(cfg, hookHandler, logger)
+	if err != nil {
+		logger.Warn("startup", "start hook listener: %v (continue without)", err)
+	} else {
+		defer hookListener.Close()
+		// 自动注入 hook 到 ~/.claude/settings.json
+		if err := installClaudeHook(cfg, hookURL, logger); err != nil {
+			logger.Warn("startup", "install Claude hook: %v (continue without)", err)
+		}
 	}
 
 	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
@@ -210,7 +221,6 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		DefaultArgs: cfg.DefaultArgs,
 		Models:      cfg.Models,
 		Relay:       relayServer,
-		HookHandler: hookHandler,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
@@ -221,22 +231,66 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 
 // installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
 // 注入是幂等的，多次启动不会重复添加；卸载时调用 SettingsInjector.Uninstall 还原。
-func installClaudeHook(cfg config.Config, logger *logx.Logger) error {
+// hookURL 形如 http://127.0.0.1:8444/v1/hooks/permission-request，由独立 HTTP 监听器提供。
+func installClaudeHook(cfg config.Config, hookURL string, logger *logx.Logger) error {
 	path, err := hook.DefaultSettingsPath()
 	if err != nil {
 		return err
 	}
 	inj := hook.NewSettingsInjector(path)
-	url := fmt.Sprintf("http://127.0.0.1:%s/v1/hooks/permission-request", cfg.Port)
 	if err := inj.Install(hook.HookConfig{
-		URL:     url,
+		URL:     hookURL,
 		Token:   cfg.AuthToken,
 		Timeout: 300,
 	}); err != nil {
 		return fmt.Errorf("inject hook: %w", err)
 	}
-	logger.Info("startup", "Claude hook installed: path=%s url=%s", path, url)
+	logger.Info("startup", "Claude hook installed: path=%s url=%s", path, hookURL)
 	return nil
+}
+
+// startHookListener 启动独立 HTTP 监听器（仅绑定 127.0.0.1）服务 hook 端点。
+// 端口优先级：MOBILECODING_HOOK_PORT 环境变量 > 主端口+1。
+// 返回实际 listener 和对外 URL（含端口）。Bearer 鉴权与主服务器共用 cfg.AuthToken。
+func startHookListener(cfg config.Config, h *hook.Handler, logger *logx.Logger) (net.Listener, string, error) {
+	hookPort := pickHookPort(cfg.Port)
+	addr := "127.0.0.1:" + hookPort
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", fmt.Errorf("listen %s: %w", addr, err)
+	}
+	// 构造带 Bearer 鉴权的子路由
+	mux := http.NewServeMux()
+	mux.Handle("/v1/hooks/permission-request", auth.BearerMiddleware(cfg.AuthToken, h))
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	srv := &http.Server{
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 6 * time.Minute, // 比 hook 默认超时略长，确保响应能写回
+	}
+	go func() {
+		logger.Info("startup", "hook http listener: %s", ln.Addr().String())
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			logger.Error("hook", "http serve: %v", err)
+		}
+	}()
+	url := fmt.Sprintf("http://%s/v1/hooks/permission-request", ln.Addr().String())
+	return ln, url, nil
+}
+
+// pickHookPort 决定 hook 监听端口：MOBILECODING_HOOK_PORT > 主端口+1。
+func pickHookPort(mainPort string) string {
+	if v := os.Getenv("MOBILECODING_HOOK_PORT"); v != "" {
+		return v
+	}
+	n, err := strconv.Atoi(mainPort)
+	if err != nil {
+		return "8444"
+	}
+	return strconv.Itoa(n + 1)
 }
 
 // forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接

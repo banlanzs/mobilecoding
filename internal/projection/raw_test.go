@@ -260,3 +260,120 @@ func TestProjectNonClaudeJSON(t *testing.T) {
 		t.Fatalf("len = %d, want 0 (unknown JSON should be filtered)", len(got))
 	}
 }
+
+func TestProjectRealStreamJSONToolUse(t *testing.T) {
+	// 真实 Claude stream-json 格式：tool_use 作为 content_block 跨越多个事件。
+	tracker := &PhaseTracker{
+		pendingToolUses: make(map[int]*pendingToolUse),
+		toolUseIDs:      make(map[string]string),
+	}
+	events := []engine.Event{
+		{Kind: engine.EventRaw, Data: []byte(`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"Bash","input":{}}}`)},
+		{Kind: engine.EventRaw, Data: []byte(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":"}}`)},
+		{Kind: engine.EventRaw, Data: []byte(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"go test ./...\"}"}}`)},
+		{Kind: engine.EventRaw, Data: []byte(`{"type":"content_block_stop","index":1}`)},
+	}
+	var got []Event
+	for _, e := range events {
+		ev, err := parseClaudeEventWithTracker(e.Data, "sess_test", tracker)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		got = append(got, ev...)
+	}
+	// 期望：content_block_start 不 emit；2 个 delta 累积；content_block_stop 时统一 emit 一个 ToolUseEvent
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1 (only ToolUseEvent at stop), got %d events: %+v", len(got), len(got), eventTypes(got))
+	}
+	if got[0].Type != EventToolUse {
+		t.Fatalf("Type = %q, want tool_use", got[0].Type)
+	}
+	if got[0].ToolName != "Bash" {
+		t.Errorf("ToolName = %q, want Bash", got[0].ToolName)
+	}
+	if got[0].ToolID != "toolu_01" {
+		t.Errorf("ToolID = %q, want toolu_01 (should preserve tool_use.id for pairing)", got[0].ToolID)
+	}
+	// ToolInput 应该是解析后的 map
+	input, ok := got[0].ToolInput.(map[string]any)
+	if !ok {
+		t.Fatalf("ToolInput type = %T, want map[string]any", got[0].ToolInput)
+	}
+	if input["command"] != "go test ./..." {
+		t.Errorf("ToolInput.command = %v, want \"go test ./...\"", input["command"])
+	}
+}
+
+func TestProjectRealStreamJSONToolResult(t *testing.T) {
+	// 真实 Claude 格式：tool_result 在 user 消息的 content 数组中
+	tracker := &PhaseTracker{
+		pendingToolUses: make(map[int]*pendingToolUse),
+		toolUseIDs:      make(map[string]string),
+	}
+	// 先登记 tool_use_id → name 映射
+	tracker.toolUseIDs["toolu_01"] = "Bash"
+	data := `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"ok\n","is_error":false}]}}`
+	ev, err := parseClaudeEventWithTracker([]byte(data), "sess_test", tracker)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(ev) != 1 {
+		t.Fatalf("len = %d, want 1, got %+v", len(ev), eventTypes(ev))
+	}
+	if ev[0].Type != EventToolResult {
+		t.Fatalf("Type = %q, want tool_result", ev[0].Type)
+	}
+	if ev[0].ToolName != "Bash" {
+		t.Errorf("ToolName = %q, want Bash (should be looked up from toolUseIDs)", ev[0].ToolName)
+	}
+}
+
+func TestProjectRealStreamJSONFullSequence(t *testing.T) {
+	// 完整序列：text → tool_use → tool_result → text → turn_end
+	tracker := &PhaseTracker{
+		pendingToolUses: make(map[int]*pendingToolUse),
+		toolUseIDs:      make(map[string]string),
+	}
+	events := []string{
+		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me run tests."}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_42","name":"Bash","input":{}}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"ls\"}"}}`,
+		`{"type":"content_block_stop","index":1}`,
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_42","content":"file1\nfile2","is_error":false}]}}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"Done","duration_ms":100}`,
+	}
+	var got []Event
+	for _, data := range events {
+		ev, err := parseClaudeEventWithTracker([]byte(data), "sess_test", tracker)
+		if err != nil {
+			t.Fatalf("parse %q: %v", data, err)
+		}
+		got = append(got, ev...)
+	}
+	types := eventTypes(got)
+	// 期望事件类型序列：text_delta, tool_use, tool_result, turn_end
+	wantTypes := []EventType{EventTextDelta, EventToolUse, EventToolResult, EventTurnEnd}
+	if len(types) != len(wantTypes) {
+		t.Fatalf("event count = %d, want %d. Got types: %v", len(types), len(wantTypes), types)
+	}
+	for i, wt := range wantTypes {
+		if types[i] != wt {
+			t.Errorf("event[%d].Type = %q, want %q (full sequence: %v)", i, types[i], wt, types)
+		}
+	}
+	// 验证 tool_result 的 ToolName 正确
+	toolResultEv := got[2]
+	if toolResultEv.ToolName != "Bash" {
+		t.Errorf("ToolResult.ToolName = %q, want Bash", toolResultEv.ToolName)
+	}
+}
+
+func eventTypes(events []Event) []EventType {
+	out := make([]EventType, 0, len(events))
+	for _, e := range events {
+		out = append(out, e.Type)
+	}
+	return out
+}

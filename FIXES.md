@@ -338,3 +338,68 @@ Claude Code v2.1.161 引入 type: http 的原生 hook（无需额外脚本），
 - go build ./... 通过
 - npx tsc --noEmit 通过
 - npm run build 通过
+
+---
+
+## 问题 5：多行消息截断 + 工具调用/结果不可见 + 权限弹窗链路断
+
+### 症状
+修复问题 4（HTTP hook）后用户反馈三个新问题：
+1. 手机发送多行消息（如 GitHub Actions 日志含 `[Pasted ~5 lines]`），CLI 只收到首行 `Run go test ./...`
+2. 工具调用过程和结果在手机端完全不可见（只看到 `🧠 思考中…` 这类 lifecycle）
+3. 权限弹窗仍不显示，且 Claude CLI 报告"未收到 allow/deny 响应"
+
+### 根本原因
+**问题 5.1（多行截断）**：`claude_runner.go` 把用户消息作为 argv 传给 `claude --print "..."`。Windows `CreateProcess` 把 `\n` 当作命令行分隔符 → 多行消息被截到第一行。
+
+**问题 5.2（工具不可见）**：`internal/projection/raw.go` 的 `parseClaudeEvent` 假设 Claude 顶层发出 `tool_use`/`tool_result` 事件，但真实 Claude Code stream-json（Anthropic API Streams 格式）把工具调用作为 `content_block`（`type:"tool_use"`）嵌入 assistant 消息，工具结果作为 `user` 消息的 content 块。结果：
+- `content_block_start` with `cbType: "tool_use"` → 在 line 290-292 被 `errors.New("skip ...")` 静默丢弃
+- `content_block_delta` with `deltaType: "input_json_delta"` → 被丢弃
+- `user` 消息完全无 case 处理，tool_result 永远到不了前端
+
+**问题 5.3（权限链路断）**：`installClaudeHook` 写入 settings.json 的 URL 是 `http://127.0.0.1:8443/...`，但主服务器是 HTTPS-only（`ListenAndServeTLS`），Claude CLI 的 HTTP POST 在 HTTPS 端口上要么连接失败要么 TLS 错误，permission_request 永远到不了后端。
+
+### 解决方案
+
+#### Fix 5.1：消息写入 stdin（避免 Windows CreateProcess 截断）
+- `claude_runner.go` 启动参数增加 `--input-format stream-json`，**不再**把 prompt 拼到 argv
+- `Write(p)` 启动进程后用 `formatClaudeInput` 把消息封装为 `{"type":"user","message":{"role":"user","content":"..."}}` JSON 行写入 stdin
+- `formatClaudeInput` 修正为 Claude --input-format stream-json 期望的标准格式
+
+#### Fix 5.2：完整解析 Claude stream-json（content_block + user message）
+- `raw.go` 把 `parseClaudeEvent` 重构为 `parseClaudeEventWithTracker(data, sid, pt) []Event`：
+  - `content_block_start` with `cbType: "tool_use"` → 登记到 `pt.pendingToolUses[blockIndex]`，不立即 emit
+  - `content_block_delta` with `deltaType: "input_json_delta"` → 累积 `partial_json` 到 pending
+  - `content_block_stop` → 把累积的 input 解析为 JSON，emit `ToolUseEvent` + 在 `pt.toolUseIDs[id] = name` 建立映射
+  - `user` message → 从 `message.content` 数组提取 `tool_result` 块，按 `tool_use_id` 反查工具名，emit `ToolResultEvent`
+  - `parseClaudeEvent(data, sid)` 保留为无状态包装，兼容旧调用
+- `PhaseTracker` 新增字段：`pendingToolUses map[int]*pendingToolUse`、`toolUseIDs map[string]string`
+- 兼容旧 top-level `{"type":"tool_use",...}` 格式（部分老版本 Claude CLI 仍这样发）
+
+#### Fix 5.3：Hook 改用独立 HTTP 监听器（避开 HTTPS 端口）
+- `cmd/server/main.go` 新增 `startHookListener(cfg, hookHandler, logger)`：单独启动一个绑定 `127.0.0.1:<port>` 的 HTTP 监听器
+  - 端口优先级：`MOBILECODING_HOOK_PORT` 环境变量 > 主端口 + 1（默认 8444）
+  - 仅 127.0.0.1 可达 → 本地 IPC 足够安全，无需 TLS
+  - Bearer 鉴权与主服务器共用 `cfg.AuthToken`
+- `installClaudeHook(cfg, hookURL, logger)` 把 `startHookListener` 返回的真实 URL 写入 `~/.claude/settings.json`
+- `internal/gateway/router.go` 移除 `/v1/hooks/permission-request` 路由（避免在 HTTPS 主路由上重复挂载）
+- `Dependencies.HookHandler` 字段删除
+
+#### 调试端点
+- `GET /api/v1/hook-status` 返回 hook 注入状态：`{ installed, settingsPath, hookURL, hooks[] }`，便于手机端排查"权限弹窗不显示"问题
+
+### 修改文件
+- `internal/engine/claude_runner.go`：加 `--input-format stream-json`，Write 写 stdin
+- `internal/engine/claude_runner_test.go`：测试新 JSON 格式 + 多行消息保留
+- `internal/projection/raw.go`：重构 parseClaudeEvent 追踪 tool_use，添加 handleContentBlockStart/Delta/Stop + handleUserMessage
+- `internal/projection/raw_test.go`：4 个新测试覆盖真实 stream-json 序列
+- `internal/ws/handler_test.go` + `internal/session/manager_test.go`：补 mockRunner/fakeRunner 的 Abort + SendToStdin（之前预存在的 build 失败）
+- `cmd/server/main.go`：startHookListener + pickHookPort + installClaudeHook 接收真实 URL
+- `internal/gateway/router.go`：移除 HookHandler 字段 + /v1/hooks 路由；新增 /api/v1/hook-status
+
+### 验证
+- `go test ./...` 全部通过（含 4 个新增 projection 测试）
+- `go build ./...` 通过
+- `npx tsc --noEmit` 通过
+- `npm run build` 通过
+

@@ -125,6 +125,8 @@ func (r *mockRunner) Done() <-chan struct{}                 { return r.done }
 func (r *mockRunner) SessionID() string                     { return "mock-session" }
 func (r *mockRunner) CanAcceptInteractiveInput() bool       { return false }
 func (r *mockRunner) HasActiveTurn() bool                   { return true }
+func (r *mockRunner) SendToStdin(p []byte) error            { return nil }
+func (r *mockRunner) Abort()                                {}
 
 func TestForwardSessionForwardsEvents(t *testing.T) {
 	mgr := session.NewManager()

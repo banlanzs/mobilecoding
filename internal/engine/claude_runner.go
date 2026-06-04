@@ -68,13 +68,23 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	return nil
 }
 
-// runClaude 启动 claude --print ... "message"，一条消息一个进程。
+// runClaude 启动 claude --print --input-format stream-json，
+// 后续由 Write 负责把用户消息作为 JSON 行写入 stdin。
 // 多轮对话通过 --resume <session_id> 保持上下文。
+// prompt 参数保留仅为向后兼容（实际不再使用 argv 传消息）。
 func (r *ClaudeRunner) runClaude(prompt string) error {
 	settingsEnv := extractSettingsEnv(r.req.Args)
 	filteredArgs := filterSettingsArgs(r.req.Args)
 
-	args := []string{"--print", "--verbose", "--output-format", "stream-json"}
+	// 使用 --input-format stream-json 让 Claude 从 stdin 读 JSON 行：
+	//   {"type":"user","message":{"role":"user","content":"..."}}
+	// 这样多行/含特殊字符的消息不会被 Windows CreateProcess 命令行截断。
+	args := []string{
+		"--print",
+		"--verbose",
+		"--output-format", "stream-json",
+		"--input-format", "stream-json",
+	}
 
 	// 多轮对话：续接上次 session
 	r.mu.Lock()
@@ -85,9 +95,8 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 	}
 
 	args = append(args, filteredArgs...)
-	if prompt != "" {
-		args = append(args, prompt)
-	}
+	_ = prompt // prompt 不再通过 argv 传递，改由 Write 写 stdin
+
 
 	command := r.req.Command
 	if runtime.GOOS == "windows" {
@@ -140,6 +149,8 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 }
 
 // Write 写入用户消息（启动新进程）。
+// 消息以 JSON 行形式写入 stdin（与 --input-format stream-json 配合），
+// 避免 Windows CreateProcess 对多行/含特殊字符 argv 的截断问题。
 func (r *ClaudeRunner) Write(p []byte) error {
 	r.mu.Lock()
 	if r.closed {
@@ -163,7 +174,26 @@ func (r *ClaudeRunner) Write(p []byte) error {
 	r.started = false
 	r.mu.Unlock()
 
-	return r.runClaude(content)
+	// 启动进程（不再传 prompt 给 argv）
+	if err := r.runClaude(""); err != nil {
+		return fmt.Errorf("start claude: %w", err)
+	}
+
+	// 等启动完成后，把消息作为 JSON 行写入 stdin
+	line, err := formatClaudeInput([]byte(content))
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	stdin := r.stdin
+	r.mu.Unlock()
+	if stdin == nil {
+		return errors.New("stdin not available after start")
+	}
+	if _, err := stdin.Write(line); err != nil {
+		return fmt.Errorf("write stdin: %w", err)
+	}
+	return nil
 }
 
 // Abort 中止当前请求：杀进程但不关 channels，session 可继续使用。
@@ -309,11 +339,17 @@ func (r *ClaudeRunner) Close() error {
 	return nil
 }
 
+// formatClaudeInput 把用户消息封装为 Claude Code --input-format stream-json 期望的格式。
+// 参考：claude-code 用 {"type":"user","message":{"role":"user","content":"..."}} 作为输入帧。
+// 使用 string content（而非 []contentBlock）以兼容 Claude Code 的简化格式。
 func formatClaudeInput(p []byte) ([]byte, error) {
 	content := strings.TrimRight(string(p), "\r\n")
 	msg := map[string]any{
-		"type":    "user_message",
-		"content": content,
+		"type": "user",
+		"message": map[string]any{
+			"role":    "user",
+			"content": content,
+		},
 	}
 	line, err := json.Marshal(msg)
 	if err != nil {

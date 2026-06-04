@@ -45,6 +45,8 @@ func (f *fakeRunner) Done() <-chan struct{}           { return f.done }
 func (f *fakeRunner) SessionID() string               { return "fake" }
 func (f *fakeRunner) CanAcceptInteractiveInput() bool { return true }
 func (f *fakeRunner) HasActiveTurn() bool             { return true }
+func (f *fakeRunner) SendToStdin(p []byte) error     { return nil }
+func (f *fakeRunner) Abort()                         {}
 
 func TestManagerStartAndCollect(t *testing.T) {
 	m := NewManager()
