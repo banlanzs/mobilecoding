@@ -115,7 +115,33 @@ func parseClaudeEvent(data []byte, sid string) (Event, error) {
 			return TextEvent(sid, text), nil
 	case "content_block_start":
 		// 记录文本块开始，不做展示
-		return Event{}, errors.New("skip content_block_start")
+		cb, ok := m["content_block"].(map[string]any)
+		if !ok {
+			return Event{}, errors.New("skip content_block_start: no content_block")
+		}
+		cbType, _ := cb["type"].(string)
+		blockIndex := 0
+		if idx, ok := m["index"].(float64); ok {
+			blockIndex = int(idx)
+		}
+		switch cbType {
+		case "text":
+			text, _ := cb["text"].(string)
+			if text == "" {
+				return Event{}, errors.New("empty content_block_start text")
+			}
+			return TextDeltaEvent(sid, text, blockIndex), nil
+		case "thinking":
+			think, _ := cb["thinking"].(string)
+			if think == "" {
+				return Event{}, errors.New("empty content_block_start thinking")
+			}
+			ev := TextDeltaEvent(sid, "", blockIndex)
+			ev.Thinking = think
+			return ev, nil
+		default:
+			return Event{}, errors.New("skip content_block_start: " + cbType)
+		}
 	case "content_block_delta":
 		delta, ok := m["delta"].(map[string]any)
 		if !ok {

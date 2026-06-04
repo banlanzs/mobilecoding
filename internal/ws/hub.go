@@ -12,7 +12,7 @@ func NewHub() *Hub {
 }
 
 func (h *Hub) Subscribe() chan Envelope {
-	ch := make(chan Envelope, 32)
+	ch := make(chan Envelope, 128)
 	h.mu.Lock()
 	h.subscribers[ch] = struct{}{}
 	h.mu.Unlock()

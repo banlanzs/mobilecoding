@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -35,11 +36,12 @@ type ClaudeRunner struct {
 
 	resumeSessionID string // Claude 内部 session id，用于 --resume
 	currentStdin    io.WriteCloser // 当前运行进程的 stdin（用于权限应答）
+	wg              sync.WaitGroup // 追踪活跃 goroutines
 }
 
 func NewClaudeRunner() *ClaudeRunner {
 	return &ClaudeRunner{
-		events:    make(chan Event, 64),
+		events:    make(chan Event, 256),
 		errors:    make(chan error, 8),
 		done:      make(chan struct{}),
 		sessionID: "claude_" + uuid.NewString(),
@@ -130,6 +132,7 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 
 	r.events <- Event{Kind: EventLifecycle, Message: "started: claude"}
 
+	r.wg.Add(3)
 	go r.readLoop(stdout)
 	go r.readStderr(stderr)
 	go r.waitLoop()
@@ -202,6 +205,7 @@ func (r *ClaudeRunner) Resize(cols, rows int) error {
 }
 
 func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
+	defer r.wg.Done()
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -217,12 +221,19 @@ func (r *ClaudeRunner) readLoop(stdout io.ReadCloser) {
 
 		ev, err := ParseClaudeStreamJSON(line)
 		if err != nil {
-			r.errors <- fmt.Errorf("claude parse: %w", err)
+			select {
+			case r.errors <- fmt.Errorf("claude parse: %w", err):
+			case <-time.After(5 * time.Second):
+			}
 			continue
 		}
 		select {
 		case r.events <- ev:
-		default:
+		case <-time.After(5 * time.Second):
+			select {
+			case r.errors <- fmt.Errorf("events channel blocked for 5s"):
+			default:
+			}
 		}
 	}
 }
@@ -241,6 +252,7 @@ func (r *ClaudeRunner) captureResumeID(line []byte) {
 }
 
 func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
+	defer r.wg.Done()
 	scanner := bufio.NewScanner(stderr)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -259,6 +271,7 @@ func (r *ClaudeRunner) readStderr(stderr io.ReadCloser) {
 }
 
 func (r *ClaudeRunner) waitLoop() {
+	defer r.wg.Done()
 	err := r.cmd.Wait()
 	// 非阻塞发送，避免 Close() 关闭 channels 后 panic
 	if err != nil {
@@ -283,6 +296,8 @@ func (r *ClaudeRunner) Close() error {
 	r.closed = true
 	r.mu.Unlock()
 	r.killProcess()
+	// 等待所有 goroutines 结束，再关 channels
+	r.wg.Wait()
 	if r.logWindow != nil {
 		r.logWindow.Close()
 	}

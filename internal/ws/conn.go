@@ -36,7 +36,7 @@ func NewConn(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 	}
 	conn := &Conn{
 		ws:     c,
-		send:   make(chan Envelope, 64),
+		send:   make(chan Envelope, 256),
 		closed: make(chan struct{}),
 	}
 	c.SetPongHandler(func(string) error {
