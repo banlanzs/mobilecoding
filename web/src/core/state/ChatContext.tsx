@@ -57,10 +57,12 @@ export interface ChatState {
   sessionId: string | null;
   messages: DisplayMessage[];
   permissionPrompt: PermissionRequestEvent | null;
+  permissionRequestId: string | null; // Claude stdio protocol request_id
   lastError: string | null;
   runtime: RuntimeConfig;
   connectionMode: 'direct' | 'relay';
   thinking: boolean;
+  turnActive: boolean; // 整个 turn 是否在执行（用于控制"中止/发送"按钮）
   agentState: AgentStateInfo;
 }
 
@@ -79,18 +81,40 @@ type Action =
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
     case 'STATUS_CHANGED':
-      return { ...state, status: action.status, lastError: action.status === 'closed' ? state.lastError : null };
+      // 连接断开：把 turnActive 设回 false（turn 中断，按钮切回"发送"）
+      if (action.status === 'closed' || action.status === 'reconnecting') {
+        return { ...state, status: action.status, turnActive: false, thinking: false };
+      }
+      return { ...state, status: action.status, lastError: null };
     case 'SESSION_STARTED': {
       // 新会话启动，清除旧消息
       try {
         localStorage.setItem('mobilecoding.sessionId', action.sessionId);
         localStorage.removeItem('mobilecoding.messages');
       } catch {}
-      return { ...state, sessionId: action.sessionId, messages: [], lastError: null };
+      return {
+        ...state,
+        sessionId: action.sessionId,
+        messages: [],
+        lastError: null,
+        thinking: false,
+        turnActive: false,
+        permissionPrompt: null,
+        permissionRequestId: null,
+        agentState: { status: 'idle', since: Date.now() },
+      };
     }
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
-      return { ...state, sessionId: null, permissionPrompt: null, thinking: false, agentState: { status: 'idle', since: Date.now() } };
+      return {
+        ...state,
+        sessionId: null,
+        permissionPrompt: null,
+        permissionRequestId: null,
+        thinking: false,
+        turnActive: false,
+        agentState: { status: 'idle', since: Date.now() },
+      };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
     case 'SET_CONNECTION_MODE':
@@ -140,13 +164,35 @@ function reducer(state: ChatState, action: Action): ChatState {
         messages,
         sessionId: action.sessionId || state.sessionId,
       };
-      if (ev.type === 'permission_request') {
-        next.permissionPrompt = ev;
+
+      // 处理权限请求：兼容两种事件类型
+      if (ev.type === 'permission_request' || ev.type === 'permission_ask') {
+        next.permissionPrompt = ev as PermissionRequestEvent;
+        // Claude stdio control_request 协议需要回传 request_id
+        if (ev.type === 'permission_ask') {
+          next.permissionRequestId = (ev as any).messageId || null;
+        } else {
+          next.permissionRequestId = null;
+        }
+        next.turnActive = true; // 等待用户处理期间视为活动
       }
-      // 只有实际文本内容到达才结束 thinking（lifecycle 仅是指示器，不改变状态）
-      if (ev.type === 'text' || ev.type === 'text_delta') {
+
+      // 整轮结束：把 turnActive 复位（但 thinking 由 Agent 状态决定）
+      if (ev.type === 'turn_end') {
+        next.turnActive = false;
         next.thinking = false;
       }
+      // 兜底：lifecycle 事件中的 "turn_end" 也表示整轮结束
+      // （用于 Claude 异常退出导致 result 事件没发出的情况）
+      if (ev.type === 'lifecycle' && (ev.message || '').startsWith('turn_end')) {
+        next.turnActive = false;
+        next.thinking = false;
+      }
+
+      // 注意：text/text_delta 不再把 thinking 置 false。
+      // thinking 仅在 turn_end / abort / SESSION_STOPPED 时被清除。
+      // 早期实现中"收到 text_delta 就把 thinking=false"是按钮提早变回发送的根因。
+
       // 更新 Agent 状态
       const as = agentStateFromEvent(ev);
       if (as) {
@@ -166,13 +212,14 @@ function reducer(state: ChatState, action: Action): ChatState {
         messages.splice(0, messages.length - MAX_MESSAGES);
       }
       saveMessages(messages);
-      return { ...state, messages, thinking: true };
+      return { ...state, messages, thinking: true, turnActive: true };
     }
     case 'PERMISSION_ANSWERED':
-      return { ...state, permissionPrompt: null };
+      return { ...state, permissionPrompt: null, permissionRequestId: null };
     case 'ABORT_TURN':
-      return { ...state, thinking: false };
+      return { ...state, thinking: false, turnActive: false };
     case 'ERROR':
+      // 错误时不重置 turnActive（可能只是网络抖动，会话还在）
       return { ...state, lastError: action.error };
     default:
       return state;
@@ -189,10 +236,12 @@ const initialState: ChatState = {
   sessionId: savedSessionId(),
   messages: loadMessages(),
   permissionPrompt: null,
+  permissionRequestId: null,
   lastError: null,
   runtime: { defaultCommand: '', defaultArgs: [], cwd: '' },
   connectionMode: 'direct',
   thinking: false,
+  turnActive: false,
   agentState: { status: 'idle', since: Date.now() },
 };
 
@@ -220,7 +269,7 @@ interface ChatContextValue {
   sendInput: (text: string) => Promise<void>;
   sendStop: () => Promise<void>;
   abortTurn: () => Promise<void>;
-  answerPermission: (allow: boolean, toolName: string) => Promise<void>;
+  answerPermission: (allow: boolean, toolName: string, requestId?: string) => Promise<void>;
   dismissPermission: () => void;
   connectRelay: (config: RelayConfig) => void;
   disconnectRelay: () => void;
@@ -396,12 +445,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [client, state.connectionMode]);
 
   const answerPermission = useCallback(
-    async (allow: boolean, toolName: string): Promise<void> => {
+    async (allow: boolean, toolName: string, requestId?: string): Promise<void> => {
       dispatch({ type: 'PERMISSION_ANSWERED' });
       if (state.connectionMode === 'relay' && relayClientRef.current) {
-        relayClientRef.current.sendPermissionAnswer(allow, toolName);
+        relayClientRef.current.sendPermissionAnswer(allow, toolName, requestId);
       } else {
-        await client.answerPermission(allow, toolName);
+        await client.answerPermission(allow, toolName, requestId);
       }
     },
     [client, state.connectionMode]

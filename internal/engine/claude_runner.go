@@ -274,18 +274,20 @@ func (r *ClaudeRunner) waitLoop() {
 	defer r.wg.Done()
 	err := r.cmd.Wait()
 	// 非阻塞发送，避免 Close() 关闭 channels 后 panic
+	// 关闭时主动插入 turn_end lifecycle 信号，让前端把按钮切回"发送"，
+	// 即使 Claude 进程异常退出导致 result 事件没发出。
 	if err != nil {
 		select {
 		case r.errors <- err:
 		default:
 		}
 		select {
-		case r.events <- Event{Kind: EventLifecycle, Message: "turn complete: " + err.Error()}:
+		case r.events <- Event{Kind: EventLifecycle, Message: "turn_end: " + err.Error()}:
 		default:
 		}
 	} else {
 		select {
-		case r.events <- Event{Kind: EventLifecycle, Message: "turn complete"}:
+		case r.events <- Event{Kind: EventLifecycle, Message: "turn_end"}:
 		default:
 		}
 	}

@@ -196,14 +196,24 @@ func (h *Handler) handleAbort(env Envelope) (*Envelope, any) {
 
 func (h *Handler) handlePermissionAnswer(env Envelope) (*Envelope, any) {
 	var p struct {
-		Allow    bool   `json:"allow"`
-		ToolName string `json:"toolName"`
+		Allow     bool   `json:"allow"`
+		ToolName  string `json:"toolName"`
+		RequestID string `json:"requestId"`
 	}
 	if err := json.Unmarshal(env.Params, &p); err != nil {
 		return newErrorRespPtr(env.ID, "protocol_error", "invalid params"), nil
 	}
-	h.logger.Info("session", "permission answer: tool=%s allow=%v", p.ToolName, p.Allow)
-	if err := h.mgr.SendToStdin(engine.PermissionAnswer(p.Allow, p.ToolName)); err != nil {
+	h.logger.Info("session", "permission answer: tool=%s allow=%v requestId=%s", p.ToolName, p.Allow, p.RequestID)
+
+	// 优先使用 control_response 协议（Claude stdio permission tool 的标准格式）
+	var payload []byte
+	if p.RequestID != "" {
+		payload = engine.ControlResponse(p.RequestID, p.Allow)
+	} else {
+		payload = engine.PermissionAnswer(p.Allow, p.ToolName)
+	}
+
+	if err := h.mgr.SendToStdin(payload); err != nil {
 		h.logger.Error("session", "permission answer write failed: %v", err)
 		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
 	}

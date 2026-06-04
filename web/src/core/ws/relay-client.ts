@@ -46,15 +46,23 @@ export class RelayClient {
     this.sendRelayForward(JSON.stringify({ text }));
   }
 
-  sendPermissionAnswer(allow: boolean, toolName: string): void {
+  sendPermissionAnswer(allow: boolean, toolName: string, requestId?: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('not connected');
     }
-    this.sendRelayForward(JSON.stringify({
-      type: 'permission_answer',
-      allow,
-      toolName,
-    }));
+    // 优先使用 control_response 协议（带 requestId），否则用 permission_answer
+    if (requestId) {
+      this.sendRelayForward(JSON.stringify({
+        type: 'control_response',
+        response: { request_id: requestId, allow },
+      }));
+    } else {
+      this.sendRelayForward(JSON.stringify({
+        type: 'permission_answer',
+        allow,
+        toolName,
+      }));
+    }
   }
 
   private sendRelayForward(payload: string): void {

@@ -8,7 +8,10 @@ export function InputBar() {
   const [sending, setSending] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  const isActive = state.thinking || state.agentState.status !== 'idle';
+  // 按钮显示逻辑：整轮 turn 在执行期间一直显示"中止"。
+  // turnActive 由 ChatContext 在 USER_MESSAGE_SENT 时打开，在 turn_end / abort / SESSION_STOPPED 时关闭。
+  // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
+  const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
 
   // 键盘弹出适配
   useEffect(() => {
@@ -75,7 +78,7 @@ export function InputBar() {
   };
 
   const placeholder = state.sessionId
-    ? (isActive ? 'AI 思考中… (Enter 停止)' : '输入消息… (Enter 发送, Shift+Enter 换行)')
+    ? (isActive ? 'AI 响应中… (Enter 中止)' : '输入消息… (Enter 发送, Shift+Enter 换行)')
     : '先点击 Start 启动会话';
 
   return (

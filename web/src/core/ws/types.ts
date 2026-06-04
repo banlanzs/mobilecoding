@@ -49,6 +49,7 @@ export type EventType =
   | 'tool_use'
   | 'tool_result'
   | 'permission_request'
+  | 'permission_ask'
   | 'plan_mode'
   | 'context_window'
   | 'session'
@@ -60,12 +61,14 @@ export type EventType =
   | 'bash_start'
   | 'bash_output'
   | 'bash_end'
-  | 'agent_state';
+  | 'agent_state'
+  | 'turn_end';
 
 export interface BaseEvent {
   type: EventType;
   sessionId: string;
   time: string; // RFC3339 ISO 8601
+  messageId?: string; // 后端生成，用于去重和 requestId 关联
 }
 
 export interface TextEvent extends BaseEvent {
@@ -101,6 +104,19 @@ export interface ToolResultEvent extends BaseEvent {
 export interface PermissionRequestEvent extends BaseEvent {
   type: 'permission_request';
   toolName: string;
+  message: string;
+}
+
+export interface PermissionAskEvent extends BaseEvent {
+  type: 'permission_ask';
+  toolName: string;
+  message: string;
+  // messageId 来自 BaseEvent，承载 Claude stdio control_request 的 request_id
+}
+
+export interface TurnEndEvent extends BaseEvent {
+  type: 'turn_end';
+  text: string;
   message: string;
 }
 
@@ -166,6 +182,7 @@ export type AppEvent =
   | ToolUseEvent
   | ToolResultEvent
   | PermissionRequestEvent
+  | PermissionAskEvent
   | PlanModeEvent
   | ContextWindowEvent
   | SessionEvent
@@ -177,7 +194,8 @@ export type AppEvent =
   | BashStartEvent
   | BashOutputEvent
   | BashEndEvent
-  | AgentStateEvent;
+  | AgentStateEvent
+  | TurnEndEvent;
 
 // 用户消息（前端合成，用于回显）
 export interface UserMessage {

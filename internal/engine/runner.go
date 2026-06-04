@@ -62,11 +62,26 @@ type Runner interface {
 }
 
 // PermissionAnswer 构造 Claude stream-json 权限应答。
+// 同时支持 stdio control_response 协议和旧版 permission_answer 协议（兼容老版本 Claude CLI）。
 func PermissionAnswer(allow bool, toolName string) []byte {
 	b, _ := json.Marshal(map[string]any{
 		"type":      "permission_answer",
 		"allow":     allow,
 		"tool_name": toolName,
 	})
+	return append(b, '\n')
+}
+
+// ControlResponse 构造 Claude stdio control_response 协议帧。
+// 配合 control_request 事件使用：把 request_id 原样回填。
+func ControlResponse(requestID string, allow bool) []byte {
+	payload := map[string]any{
+		"type": "control_response",
+		"response": map[string]any{
+			"request_id": requestID,
+			"allow":      allow,
+		},
+	}
+	b, _ := json.Marshal(payload)
 	return append(b, '\n')
 }

@@ -58,10 +58,24 @@ export function MessageList() {
             {state.permissionPrompt.message || '请求执行工具操作'}
           </div>
           <div className="permission-banner-actions">
-            <button className="btn-allow" onClick={() => answerPermission(true, state.permissionPrompt!.toolName)}>
+            <button
+              className="btn-allow"
+              onClick={() => answerPermission(
+                true,
+                state.permissionPrompt!.toolName,
+                state.permissionRequestId || undefined,
+              )}
+            >
               Allow
             </button>
-            <button className="btn-deny" onClick={() => answerPermission(false, state.permissionPrompt!.toolName)}>
+            <button
+              className="btn-deny"
+              onClick={() => answerPermission(
+                false,
+                state.permissionPrompt!.toolName,
+                state.permissionRequestId || undefined,
+              )}
+            >
               Deny
             </button>
           </div>

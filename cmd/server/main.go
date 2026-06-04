@@ -203,6 +203,10 @@ func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub
 	input := mgr.Output()
 	fwdCount := 0
 
+	// phaseTracker 必须跨事件共享，否则 tool_start/tool_end/bash_start/bash_end/thinking_start/thinking_end
+	// 等配对事件无法正确生成。session 切换时通过事件输入流自然重建（首个事件由新 phaseTracker 处理）。
+	tracker := &projection.PhaseTracker{}
+
 	for {
 		select {
 		case ev, ok := <-input:
@@ -210,11 +214,9 @@ func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub
 				logger.Debug("broadcast", "session output closed, forwarded %d events", fwdCount)
 				return
 			}
-			// 注意：这里不做 projection，因为每个 handler 会自己做 projection
-			// 直接将 engine.Event 包装成某种可序列化的格式
-			// 但是为了保持一致性，我们在这里做 projection
+			// 每次都使用同一个 phaseTracker，跨事件保持状态
 			sid := mgr.SessionID()
-			projEvents := projection.Project([]engine.Event{ev}, sid)
+			projEvents := projection.Project([]engine.Event{ev}, sid, tracker)
 			logger.Debug("broadcast", "event kind=%s projected=%d", ev.Kind, len(projEvents))
 
 			for _, pe := range projEvents {

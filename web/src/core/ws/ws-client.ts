@@ -91,8 +91,8 @@ export class WSClient {
     await this.send('session.input', { text });
   }
 
-  async answerPermission(allow: boolean, toolName: string): Promise<void> {
-    await this.send('session.permission.answer', { allow, toolName });
+  async answerPermission(allow: boolean, toolName: string, requestId?: string): Promise<void> {
+    await this.send('session.permission.answer', { allow, toolName, requestId });
   }
 
   async abortTurn(): Promise<void> {

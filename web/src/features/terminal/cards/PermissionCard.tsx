@@ -1,16 +1,21 @@
 // 渲染 permission_request 事件 — 权限请求（高亮）
 import { useState } from 'react';
-import type { PermissionRequestEvent } from '../../../core/ws/types';
+import type { PermissionRequestEvent, PermissionAskEvent } from '../../../core/ws/types';
 import { useChat } from '../../../core/state/ChatContext';
 
-export function PermissionCard({ event }: { event: PermissionRequestEvent }) {
+type PermissionEvent = PermissionRequestEvent | PermissionAskEvent;
+
+export function PermissionCard({ event }: { event: PermissionEvent }) {
   const { answerPermission } = useChat();
   const [answered, setAnswered] = useState(false);
+
+  // permission_ask 事件携带 messageId 作为 Claude stdio control_request 的 request_id
+  const requestId = event.type === 'permission_ask' ? event.messageId : undefined;
 
   const handleAnswer = async (allow: boolean) => {
     setAnswered(true);
     try {
-      await answerPermission(allow, event.toolName);
+      await answerPermission(allow, event.toolName, requestId);
     } catch {
       setAnswered(false);
     }

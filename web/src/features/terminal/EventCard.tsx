@@ -36,6 +36,7 @@ export function EventCard({ event }: { event: DisplayMessage }) {
     case 'tool_result':
       return <ToolResultCard event={event} />;
     case 'permission_request':
+    case 'permission_ask':
       return <PermissionCard event={event} />;
     case 'plan_mode':
       return <PlanModeCard event={event} />;
@@ -53,6 +54,8 @@ export function EventCard({ event }: { event: DisplayMessage }) {
     case 'bash_end':
     case 'agent_state':
       return <ToolEventCard event={event} />;
+    case 'turn_end':
+      return null; // 整轮结束是控制信号，不在前端展示
     default:
       return null;
   }

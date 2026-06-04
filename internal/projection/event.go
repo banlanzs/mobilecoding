@@ -35,6 +35,8 @@ const (
 	EventBashOutput    EventType = "bash_output"    // Bash 流式输出
 	EventBashEnd       EventType = "bash_end"       // Bash 命令完成
 	EventAgentState    EventType = "agent_state"    // Agent 状态变更
+	EventTurnEnd       EventType = "turn_end"       // 整轮结束（Claude result 事件）
+	EventPermissionAsk EventType = "permission_ask" // Claude stdio permission_request
 )
 
 // Event 是投影后的事件（前端订阅的契约）。
@@ -136,4 +138,12 @@ func BashEndEvent(sid, toolID string) Event {
 
 func AgentStateEvent(sid, state string) Event {
 	return Event{Type: EventAgentState, SessionID: sid, Time: time.Now().UTC(), State: state, MessageID: newMessageID()}
+}
+
+func TurnEndEvent(sid, result string, isError bool) Event {
+	return Event{Type: EventTurnEnd, SessionID: sid, Time: time.Now().UTC(), Text: result, Message: result, MessageID: newMessageID()}
+}
+
+func PermissionAskEvent(sid, requestID, toolName, prompt string) Event {
+	return Event{Type: EventPermissionAsk, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, Message: prompt, MessageID: requestID}
 }
