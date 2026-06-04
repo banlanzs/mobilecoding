@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -191,6 +192,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		}
 		hub.Broadcast(env)
 	})
+	hookHandler.Log = func(format string, args ...any) { logger.Info("hook-http", format, args...) }
 	wsHandler.SetHookRegistry(hookRegistry)
 
 	// 独立 HTTP 监听器（仅 127.0.0.1）服务 hook 端点，避开主端口的 HTTPS。
@@ -230,22 +232,41 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 }
 
 // installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
-// 注入是幂等的，多次启动不会重复添加；卸载时调用 SettingsInjector.Uninstall 还原。
-// hookURL 形如 http://127.0.0.1:8444/v1/hooks/permission-request，由独立 HTTP 监听器提供。
+// 同时扫描同目录下的其他 settings*.json（如 settings.axonhub.json）一并注入，
+// 因为用户可能通过 --settings 参数使用不同的配置文件。
 func installClaudeHook(cfg config.Config, hookURL string, logger *logx.Logger) error {
-	path, err := hook.DefaultSettingsPath()
+	install := func(path string) {
+		inj := hook.NewSettingsInjector(path)
+		if err := inj.Install(hook.HookConfig{
+			URL:     hookURL,
+			Token:   cfg.AuthToken,
+			Timeout: 300,
+		}); err != nil {
+			logger.Warn("startup", "hook install skipped for %s: %v", path, err)
+			return
+		}
+		logger.Info("startup", "Claude hook installed: path=%s url=%s", path, hookURL)
+	}
+
+	defaultPath, err := hook.DefaultSettingsPath()
 	if err != nil {
 		return err
 	}
-	inj := hook.NewSettingsInjector(path)
-	if err := inj.Install(hook.HookConfig{
-		URL:     hookURL,
-		Token:   cfg.AuthToken,
-		Timeout: 300,
-	}); err != nil {
-		return fmt.Errorf("inject hook: %w", err)
+	install(defaultPath)
+
+	// 扫描同目录下的其他 settings*.json 并安装
+	dir := filepath.Dir(defaultPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // 目录不存在则跳过
 	}
-	logger.Info("startup", "Claude hook installed: path=%s url=%s", path, hookURL)
+	for _, e := range entries {
+		name := e.Name()
+		if name == "settings.json" || !strings.HasPrefix(name, "settings") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		install(filepath.Join(dir, name))
+	}
 	return nil
 }
 

@@ -286,9 +286,11 @@ func parseClaudeEventWithTracker(data []byte, sid string, pt *PhaseTracker) ([]E
 				text = strippedText
 			}
 			if text == "" {
-				// 仅思考阶段：不暴露内容，只显示简短指示器
+				// 仅思考阶段：发送 text_delta 携带 thinking 内容，前端可折叠显示
 				if thinking != "" {
-					return []Event{LifecycleEvent(sid, "思考中…")}, nil
+					ev := TextDeltaEvent(sid, "", 0)
+					ev.Thinking = thinking
+					return []Event{ev}, nil
 				}
 				return nil, errors.New("empty message")
 			}

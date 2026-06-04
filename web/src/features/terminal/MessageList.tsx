@@ -10,6 +10,13 @@ export function MessageList() {
   const stuckAtBottom = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
+  // 调试日志：监控权限状态
+  useEffect(() => {
+    if (state.permissionPrompt) {
+      console.log('[DEBUG] permissionPrompt changed:', state.permissionPrompt);
+    }
+  }, [state.permissionPrompt]);
+
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;

@@ -565,46 +565,59 @@
 
 /* 权限 Banner */
 .permission-banner {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  margin: 8px 12px;
-  padding: 12px 14px;
-  background: rgba(224, 175, 104, 0.1);
-  border: 2px solid #e0af68;
-  border-radius: 8px;
-  animation: pulse 2s infinite;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: 0;
+  padding: 14px 16px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: rgba(26, 27, 38, 0.97);
+  border-top: 2px solid #e0af68;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 .permission-banner-header {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #e0af68;
   margin-bottom: 6px;
 }
 
 .permission-banner-msg {
-  font-size: 12px;
+  font-size: 13px;
   color: #c0caf5;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   word-break: break-word;
 }
 
 .permission-banner-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .permission-banner-actions .btn-allow,
 .permission-banner-actions .btn-deny {
   flex: 1;
-  padding: 10px 18px;
-  font-size: 14px;
+  padding: 12px 20px;
+  font-size: 15px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   border: none;
-  min-height: 44px;
+  min-height: 48px;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.permission-banner-actions .btn-allow:active,
+.permission-banner-actions .btn-deny:active {
+  transform: scale(0.97);
 }
 
 .permission-banner-actions .btn-allow {

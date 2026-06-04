@@ -40,7 +40,11 @@ function loadMessages(): DisplayMessage[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(-MAX_STORED_MESSAGES);
+    // 过滤掉权限请求事件（这些是一次性的，不应该在页面刷新后重新显示）
+    const filtered = parsed.filter((msg: DisplayMessage) =>
+      msg.type !== 'permission_request' && msg.type !== 'permission_ask'
+    );
+    return filtered.slice(-MAX_STORED_MESSAGES);
   } catch {
     return [];
   }
@@ -121,20 +125,38 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, connectionMode: action.mode };
     case 'EVENT_RECEIVED': {
       const ev = action.event;
-      // 按 messageId 去重（防止重连重复事件）
-      if ((ev as any).messageId && state.messages.some((m) => (m as any).messageId === (ev as any).messageId)) {
+      console.log('[DEBUG] EVENT_RECEIVED:', ev.type, ev);
+
+      // 按 messageId 去重（防止重连重复事件），但权限请求不去重，确保每次都能显示
+      if ((ev as any).messageId &&
+          ev.type !== 'permission_request' &&
+          ev.type !== 'permission_ask' &&
+          state.messages.some((m) => (m as any).messageId === (ev as any).messageId)) {
+        console.log('[DEBUG] Event deduplicated:', ev.type);
         return state;
       }
       let messages: DisplayMessage[];
 
-      if (ev.type === 'text_delta') {
+      // 权限事件去重：stdin 协议和 HTTP Hook 可能发送重复的 permission_ask，
+      // 若最近一条消息已是同类权限请求（同 toolName），则只更新 permissionPrompt，不追加重复消息
+      if (ev.type === 'permission_request' || ev.type === 'permission_ask') {
+        const lastMsg = state.messages[state.messages.length - 1];
+        const isDupPerm = lastMsg && (lastMsg.type === 'permission_request' || lastMsg.type === 'permission_ask')
+          && (lastMsg as any).toolName === (ev as any).toolName;
+        if (isDupPerm) {
+          // 替换最后一条而不是追加新的
+          messages = [...state.messages.slice(0, -1), ev as DisplayMessage];
+        } else {
+          messages = [...state.messages, ev as DisplayMessage];
+        }
+      } else if (ev.type === 'text_delta') {
         // 增量文本：追加到最后一张 text_delta 卡片，或创建新卡片
         const last = state.messages[state.messages.length - 1];
         if (last && last.type === 'text_delta' && (last as TextDeltaEvent).blockIndex === ev.blockIndex) {
           const lastDelta = last as TextDeltaEvent;
           const merged: TextDeltaEvent = {
             ...lastDelta,
-            text: lastDelta.text + ev.text,
+            text: (lastDelta.text || '') + (ev.text || ''),
             thinking: lastDelta.thinking && ev.thinking
               ? lastDelta.thinking + '\n\n' + ev.thinking
               : (lastDelta.thinking || ev.thinking || undefined),
@@ -144,10 +166,16 @@ function reducer(state: ChatState, action: Action): ChatState {
           messages = [...state.messages, ev as DisplayMessage];
         }
       } else if (ev.type === 'text') {
-        // 完整文本：替换同一块的 text_delta 卡片
+        // 完整文本：替换同一块的 text_delta 卡片，保留累积的 thinking
         const last = state.messages[state.messages.length - 1];
         if (last && last.type === 'text_delta') {
-          messages = [...state.messages.slice(0, -1), ev as DisplayMessage];
+          const preservedThinking = (last as TextDeltaEvent).thinking;
+          const finalEvent = { ...ev };
+          // 如果 text_delta 累积了 thinking 但 text 事件没有，保留之前的
+          if (preservedThinking && !ev.thinking) {
+            (finalEvent as any).thinking = preservedThinking;
+          }
+          messages = [...state.messages.slice(0, -1), finalEvent as DisplayMessage];
         } else {
           messages = [...state.messages, ev as DisplayMessage];
         }
@@ -167,6 +195,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 
       // 处理权限请求：兼容两种事件类型
       if (ev.type === 'permission_request' || ev.type === 'permission_ask') {
+        console.log('[DEBUG] Permission event received:', ev);
         next.permissionPrompt = ev as PermissionRequestEvent;
         // Claude stdio control_request 协议需要回传 request_id
         if (ev.type === 'permission_ask') {
@@ -175,6 +204,27 @@ function reducer(state: ChatState, action: Action): ChatState {
           next.permissionRequestId = null;
         }
         next.turnActive = true; // 等待用户处理期间视为活动
+        console.log('[DEBUG] permissionPrompt set:', next.permissionPrompt);
+      }
+
+      // 检测 tool_result 中的权限请求（Claude hook 超时后自动拒绝，权限信息嵌在 tool_result 中）
+      if (!next.permissionPrompt && ev.type === 'tool_result') {
+        const rt = typeof ev.toolResult === 'string' ? ev.toolResult : '';
+        if (rt.includes('requested permissions') && rt.includes("haven't granted")) {
+          const toolMatch = rt.match(/permissions to (\w+)(?: (?:to|on|in) (.+?))?(?:,| but|\.|$)/);
+          const toolName = toolMatch ? toolMatch[1] : 'Unknown';
+          const target = toolMatch && toolMatch[2] ? toolMatch[2].trim() : '';
+          const promptMsg = `请求使用 ${toolName}${target ? ' — ' + target : ''}`;
+          console.log('[DEBUG] Detected permission request in tool_result:', toolName, target);
+          next.permissionPrompt = {
+            type: 'permission_request',
+            sessionId: ev.sessionId || state.sessionId || '',
+            time: ev.time,
+            toolName,
+            message: promptMsg,
+            messageId: ev.messageId,
+          } as any;
+        }
       }
 
       // 整轮结束：把 turnActive 复位（但 thinking 由 Agent 状态决定）
@@ -182,11 +232,13 @@ function reducer(state: ChatState, action: Action): ChatState {
         next.turnActive = false;
         next.thinking = false;
       }
-      // 兜底：lifecycle 事件中的 "turn_end" 也表示整轮结束
-      // （用于 Claude 异常退出导致 result 事件没发出的情况）
+      // 兜底：lifecycle 事件中的 "turn_end" 表示旧进程退出。
+      // 仅在当前没有活跃 turn 时才复位（避免旧进程的残留事件打断新 turn）
       if (ev.type === 'lifecycle' && (ev.message || '').startsWith('turn_end')) {
-        next.turnActive = false;
-        next.thinking = false;
+        if (!next.thinking && !next.turnActive && next.agentState.status === 'idle') {
+          next.turnActive = false;
+          next.thinking = false;
+        }
       }
 
       // 注意：text/text_delta 不再把 thinking 置 false。
@@ -445,30 +497,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [client, state.connectionMode]);
 
   const answerPermission = useCallback(
-    async (allow: boolean, toolName: string, requestId?: string): Promise<void> => {
+    async (allow: boolean, _toolName: string, requestId?: string): Promise<void> => {
       dispatch({ type: 'PERMISSION_ANSWERED' });
+      // 没有 requestId 说明是 tool_result 中检测出的伪权限请求（Claude 已超时拒绝）
+      // stdout 写入已无效，仅关闭弹窗
+      if (!requestId) return;
       if (state.connectionMode === 'relay' && relayClientRef.current) {
-        // 优先走新协议（HTTP hook）
-        if (requestId) {
-          relayClientRef.current.sendRespondPermission(requestId, allow);
-        } else {
-          relayClientRef.current.sendPermissionAnswer(allow, toolName, requestId);
-        }
+        relayClientRef.current.sendRespondPermission(requestId, allow);
       } else {
-        // direct 模式：优先用 respondPermission（新协议）
-        if (requestId) {
-          try {
-            await client.respondPermission(requestId, allow);
-            return;
-          } catch (err) {
-            console.warn('respondPermission failed, fallback to answerPermission:', err);
-          }
-        }
-        await client.answerPermission(allow, toolName, requestId);
+        await client.respondPermission(requestId, allow);
       }
-    },
-    [client, state.connectionMode]
-  );
+    }, [client, state.connectionMode]);
 
   const value: ChatContextValue = {
     state,

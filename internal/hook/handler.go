@@ -130,10 +130,11 @@ func (r *Registry) Pending() int {
 // Handler 返回 HTTP handler，注册到 chi router 的 /v1/hooks/permission-request。
 // 接收 Claude POST -> 构造 Event -> 调用 broadcaster -> 等待用户决策 -> 返回 JSON。
 type Handler struct {
-	Registry   *Registry
-	Broadcast  func(Event) // 由 main.go 注入：把事件广播到所有 WS 订阅者
-	Timeout    time.Duration
+	Registry      *Registry
+	Broadcast     func(Event) // 由 main.go 注入：把事件广播到所有 WS 订阅者
+	Timeout       time.Duration
 	DenyOnTimeout bool
+	Log           func(format string, args ...any) // 可选日志回调
 }
 
 func NewHandler(reg *Registry, broadcast func(Event)) *Handler {
@@ -146,6 +147,8 @@ func NewHandler(reg *Registry, broadcast func(Event)) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.logf("hook received request: method=%s remote=%s", r.Method, r.RemoteAddr)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -154,9 +157,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 解析 Claude POST body
 	var req Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logf("hook parse error: %v", err)
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.logf("hook parsed: tool=%s event=%s session=%s", req.ToolName, req.HookEventName, req.SessionID)
 	if req.HookEventName == "" {
 		req.HookEventName = "PermissionRequest"
 	}
@@ -184,6 +189,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 广播给 WS 客户端
 	if h.Broadcast != nil {
+		h.logf("hook broadcasting to WS: requestId=%s tool=%s", requestID, req.ToolName)
 		h.Broadcast(ev)
 	}
 
@@ -203,6 +209,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			decision = Decision{Allow: false, Reason: "registry aborted"}
 		} else {
 			decision = d
+			h.logf("hook user responded: requestId=%s allow=%v", requestID, d.Allow)
 		}
 	case <-ctx.Done():
 		h.Registry.Abort(requestID)
@@ -211,6 +218,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			decision = Decision{Allow: true, Reason: "timeout (auto-allowed)"}
 		}
+		h.logf("hook decision timed out: requestId=%s allow=%v", requestID, decision.Allow)
 	}
 
 	// 构造 Claude 期望的响应
@@ -275,6 +283,12 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+func (h *Handler) logf(format string, args ...any) {
+	if h.Log != nil {
+		h.Log(format, args...)
+	}
 }
 
 // errNoBroadcast 哨兵错误。

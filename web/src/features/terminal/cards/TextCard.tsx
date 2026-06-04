@@ -26,48 +26,49 @@ function renderMarkdown(text: string): string {
 
 // 打字机动画：逐字揭示文本
 function useTypewriter(text: string, isDelta: boolean): string {
-  const [revealed, setRevealed] = useState(isDelta ? text : '');
+  const safeText = text || '';
+  const [revealed, setRevealed] = useState(isDelta ? safeText : '');
   const prevFull = useRef('');
 
   useEffect(() => {
     // text_delta 模式下直接全量显示（已经是增量的）
     if (isDelta) {
-      setRevealed(text);
-      prevFull.current = text;
+      setRevealed(safeText);
+      prevFull.current = safeText;
       return;
     }
 
     // 文本未变化，跳过
-    if (text === prevFull.current) return;
-    prevFull.current = text;
+    if (safeText === prevFull.current) return;
+    prevFull.current = safeText;
 
     // 短文本直接显示
-    if (text.length < 60) {
-      setRevealed(text);
+    if (safeText.length < 60) {
+      setRevealed(safeText);
       return;
     }
 
     // 长文本：打字机动画（~80 步，约 2 秒完成）
-    setRevealed(text.slice(0, 3)); // 先显示前几个字，避免瞬间空白
+    setRevealed(safeText.slice(0, 3)); // 先显示前几个字，避免瞬间空白
     let i = 1;
     const totalSteps = 80;
-    const charsPerStep = Math.max(1, Math.ceil(text.length / totalSteps));
+    const charsPerStep = Math.max(1, Math.ceil(safeText.length / totalSteps));
     const timer = setInterval(() => {
       i++;
-      const end = Math.min(i * charsPerStep, text.length);
-      setRevealed(text.slice(0, end));
-      if (end >= text.length) {
+      const end = Math.min(i * charsPerStep, safeText.length);
+      setRevealed(safeText.slice(0, end));
+      if (end >= safeText.length) {
         clearInterval(timer);
       }
     }, 25);
     return () => clearInterval(timer);
-  }, [text, isDelta]);
+  }, [safeText, isDelta]);
 
   // 确保最终显示完整文本
-  if (revealed.length < text.length && !isDelta && text.length < 80) {
-    return text;
+  if (revealed.length < safeText.length && !isDelta && safeText.length < 80) {
+    return safeText;
   }
-  return revealed || text;
+  return revealed || safeText;
 }
 
 export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
@@ -75,7 +76,8 @@ export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const isDelta = event.type === 'text_delta';
 
-  const displayText = useTypewriter(event.text, isDelta);
+  const text = event.text || '';
+  const displayText = useTypewriter(text, isDelta);
   const html = useMemo(() => renderMarkdown(displayText), [displayText]);
   const thinkingHtml = useMemo(
     () => (event.thinking ? renderMarkdown(event.thinking) : ''),
@@ -83,9 +85,14 @@ export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   );
   const hasThinking = !!event.thinking;
 
+  // 调试日志
+  if (event.thinking) {
+    console.log('[DEBUG] TextCard has thinking:', event.thinking.substring(0, 100));
+  }
+
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(event.text);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {

@@ -84,6 +84,7 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 		"--verbose",
 		"--output-format", "stream-json",
 		"--input-format", "stream-json",
+		"--permission-prompt-tool", "stdio",
 	}
 
 	// 多轮对话：续接上次 session
