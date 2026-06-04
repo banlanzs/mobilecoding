@@ -1,96 +1,76 @@
 # mobilecoding
 
-**个人 AI CLI 远程控制台** — 把本机 Claude Code / Codex / 任意 LLM CLI 的"等待态"做成手机可操作的结构化卡片。
+**个人 AI CLI 远程控制台** — 把本机 Claude Code / Codex / 任意 LLM CLI 变成手机可操作的结构化聊天界面。
 
-手机浏览器打开 https://你的电脑IP:8443 ，扫码或输入 token 即可连接。不需要安装手机 App，不需要 TestFlight 或 APK。
+手机浏览器打开 `https://你的电脑IP:8443`，扫码或输入 token 即可连接。无需安装 App。
 
 ---
 
 ## 功能
 
-### 后端
+### AI 引擎
 
 | 功能 | 说明 |
 |---|---|
-| **ClaudeRunner** | 解析 `claude --output-format stream-json` 输出，支持 assistant_message / tool_use / permission_request / plan_mode 等 7 种事件类型 |
-| **CodexRunner** | 解析 `codex app-server` JSON-RPC |
-| **PtyRunner** | 通用 PTY 模式，支持 aichat / crush / ollama 等任意 CLI |
-| **Skill / Memory 管理** | REST API (`/api/v1/skills`, `/api/v1/memory`) |
-| **文件浏览** | 工作区文件树 + 读取 + denylist（.env/*.key/*.pem 等自动拦截） |
-| **会话管理** | 单活跃 session + stall watchdog（120s 沉默 → 自动 kill） |
-| **Stall Watchdog** | 120s 沉默阈值 + 10min 工具执行宽限 |
-| **cert 轮换** | 证书过期前 30 天自动重新签发 |
-| **配置热重载** | SIGHUP 信号触发配置重载 |
-| **日志轮转** | 日滚动文件，7 天保留 |
+| **ClaudeRunner** | 解析 `claude --output-format stream-json`，支持 assistant / tool_use / permission_request / plan_mode 等事件 |
+| **CodexRunner** | `codex app-server` JSON-RPC 长连接 |
+| **PtyRunner / PipeRunner** | 通用 PTY / Pipe 模式，支持 aichat / ollama 等任意 CLI |
+| **多轮对话** | `--resume` 保持 Claude 会话上下文 |
+| **模型切换** | 手机端下拉选择模型，通过 `--model` 传递，模型列表自动跟随 settings 配置刷新 |
+| **权限应答** | 手机端 Allow / Deny 按钮，通过 stdin 回传决策给 CLI 进程 |
+| **请求中止** | 输入栏发送按钮在等待期间变为停止按钮，点击杀 CLI 子进程但保留 session |
 
-### 传输层
+### 前端体验
 
 | 功能 | 说明 |
 |---|---|
-| **HTTPS** | 强制 HTTPS（自签 CA + server 证书） |
+| **PWA** | Service Worker 离线缓存，`display: standalone` 全屏体验 |
+| **流式输出** | content_block_delta 增量渲染 + 打字机逐字揭示动画 |
+| **Thinking 折叠** | 思考过程默认折叠，紫色高亮区域，一键展开/收起 |
+| **Markdown 渲染** | marked 库完整支持 GFM 表格、列表、标题层级、代码高亮 |
+| **消息持久化** | localStorage 保存最近 200 条消息，页面刷新不丢失 |
+| **移动端适配** | 三级响应式（480/768/769+）、安全区域、键盘弹出适配、表格横向滚动 |
+| **项目目录显示** | 连接栏显示服务器当前工作目录 |
+| **Skill / Memory** | REST API（`/api/v1/skills`、`/api/v1/memory`）查看和编辑 |
+| **二维码扫描** | 扫码自动填入 token 连接 |
+
+### 传输与安全
+
+| 功能 | 说明 |
+|---|---|
+| **HTTPS** | 自签 CA + server 证书 |
 | **mTLS** | 可选客户端证书认证（`--mtls=required`） |
 | **二维码配对** | 启动时终端打印二维码，手机扫码自动连接 |
-| **设备证书** | 首次连接签发设备证书，IndexedDB 持久化 |
-| **WebSocket** | 结构化事件流（codec/conn/hub/handler） |
-| **Web Push** | PWA 推送通知 |
-
-### 前端
-
-| 功能 | 说明 |
-|---|---|
-| **PWA** | Service Worker 缓存 + 离线快照 |
-| **Skill 页面** | 查看 Skill 列表 |
-| **Memory 页面** | 查看/编辑 Memory |
-| **二维码扫描** | 扫码自动填入 token |
-
-### 运维
-
-| 功能 | 说明 |
-|---|---|
-| **日志聚合** | 启动日志写入 `~/.mobilecoding/logs/`，7 天保留 |
-| **GitHub Actions** | CI (push/PR) + Release (tag push 跨平台编译) |
-| **npm 包** | `@banlan/mobilecoding`，一行命令安装 |
+| **WebSocket** | 结构化 RPC 协议（codec/conn/hub/handler），指数退避重连 |
+| **Relay 中继** | 跨网络远程连接（agent ↔ relay ↔ client） |
+| **认证** | 32B 随机 Bearer token + 常量时间比较 + 日志脱敏 |
+| **证书轮换** | 过期前 30 天自动重新签发 |
+| **配置热重载** | SIGHUP 触发 |
 
 ---
 
 ## 快速开始
 
-### Go 构建启动
+### 构建启动
 
 ```bash
-go build -o mobilecoding.exe ./cmd/server
-./mobilecoding.exe
+make build
+./dist/mobilecoding.exe
 
 # 浏览器访问 https://127.0.0.1:8443/
 ```
 
-### 二维码配对
+### npm 安装
 
 ```bash
-./mobilecoding.exe
-
-# 终端会显示:
-# ==================================================
-# Scan QR Code to connect:
-# ████████████████████████████████████
-# ██  ████  ██████  ██  ██  ██  ██████
-# ██  ████  ██████  ██  ██  ██  ██████
-# ...
-# ==================================================
-# 手机扫码即可自动连接
+npm install -g @banlan/mobilecoding
+mobilecoding start
 ```
 
 ### 自定义 token
 
 ```bash
 MOBILECODING_AUTH_TOKEN=mysecrettoken ./mobilecoding.exe
-```
-
-### npm 安装启动
-
-```bash
-npm install -g @banlan/mobilecoding
-mobilecoding start
 ```
 
 ---
@@ -104,52 +84,44 @@ mobilecoding start
 | `MOBILECODING_PORT` | `8443` | 监听端口 |
 | `MOBILECODING_AUTH_TOKEN` | 自动生成 | 认证 token |
 | `MOBILECODING_WORKSPACE` | `~/mobilecoding-workspace` | 工作区路径 |
-| `MOBILECODING_MTLS` | `optional` | mTLS 模式 (optional / required) |
-| `MOBILECODING_LOG_LEVEL` | `info` | 日志级别 (debug / info / warn / error) |
+| `MOBILECODING_MTLS` | `optional` | mTLS 模式（optional / required） |
+| `MOBILECODING_LOG_LEVEL` | `info` | 日志级别 |
 | `MOBILECODING_DEFAULT_COMMAND` | `claude` | 默认 AI 命令 |
+| `MOBILECODING_DEFAULT_ARGS` | — | 默认 CLI 参数 |
+| `MOBILECODING_MODELS` | 内置默认列表 | 自定义模型列表（`标签:模型名,标签:模型名`） |
 
-### 命令行参数
+### 模型配置
 
-```bash
-mobilecoding.exe \
-  --port 8443 \
-  --auth-token "xxx" \
-  --workspace "~/my-project" \
-  --mtls optional \
-  --log-level info \
-  --default-command claude
-```
+手机端模型选择器默认显示服务端 `/api/v1/models` 返回的列表。可通过以下方式自定义：
 
-配置热重载：`kill -HUP <PID>`
+1. **环境变量**：`MOBILECODING_MODELS=Haiku:claude-haiku-4-5,Sonnet:claude-sonnet-4-6`
+2. **Settings 文件**：在 `~/.claude/settings.*.json` 的 `env` 中配置 `ANTHROPIC_*_MODEL` 变量，切换配置时自动刷新模型列表
 
 ---
 
 ## 架构
 
-```text
+```
 手机浏览器 (PWA)
     │
     ▼  WebSocket (wss://)
 mobilecoding Go 后端
     │
-    ├─ Claude CLI (--output-format stream-json)
+    ├─ Claude CLI (--output-format stream-json, stdin 双向通信)
     ├─ Codex CLI (app-server JSON-RPC)
-    └─ 通用 PTY (aichat / crush / ollama ...)
+    └─ 通用 PTY / Pipe (aichat / ollama ...)
 ```
 
 ```
-后端包:
-  auth/       — Token + CA + mTLS + 设备证书 + 二维码 + cert rotation
+内部包:
+  auth/       — Token + CA + mTLS + 设备证书 + 二维码 + 证书轮换
   config/     — 配置 + 环境变量 + SIGHUP 热重载
-  engine/     — ClaudeRunner + CodexRunner + PtyRunner + registry
-  files/      — 文件树 + 读取 + denylist
-  gateway/    — HTTP 路由 + SPA + WS 升级 + API
-  logx/       — 结构化日志 + 脱敏 + 轮转
-  projection/ — 事件投影 + Claude 深度解析
-  push/       — Web Push
-  session/    — 会话管理 + stall watchdog
-  store/      — 原子重命名存储
-  ws/         — WebSocket 协议
+  engine/     — ClaudeRunner + CodexRunner + PtyRunner + PipeRunner + 注册表
+  gateway/    — HTTP 路由 + SPA + WS 升级 + REST API
+  projection/ — 事件投影：stream-json → 结构化事件（text_delta / tool_use / permission_request …）
+  relay/      — WebSocket 中继（agent ↔ relay ↔ client）
+  session/    — 单活跃会话管理
+  ws/         — WebSocket 协议（codec/conn/hub/handler）
 ```
 
 ---
@@ -162,11 +134,11 @@ mobilecoding Go 后端
 | 路由 | chi/v5 |
 | WebSocket | gorilla/websocket |
 | PTY | creack/pty |
-| 加密 | 标准库 crypto (TLS/mTLS/token/cert rotation) |
+| 加密 | 标准库 crypto (TLS / mTLS / token / cert) |
 | 存储 | 原子重命名 JSON 文件 |
-| 前端 | React + TypeScript + Vite |
+| 前端 | React 18 + TypeScript + Vite |
+| Markdown | marked (GFM) |
 | PWA | Workbox (Service Worker + IndexedDB) |
-| 推送 | Web Push API |
 | 发布 | npm + GitHub Actions |
 
 ---
@@ -177,42 +149,24 @@ mobilecoding Go 后端
 - ✅ 可选 mTLS + 设备证书
 - ✅ 32B 随机 token + 常量时间比较
 - ✅ Bearer 鉴权（query + Authorization header）
-- ✅ Log redaction（Authorization / api_key / token 自动脱敏）
-- ✅ 0o600 文件 / 0o700 目录权限
-- ✅ denylist（.env / *.key / *.pem / .git / node_modules 自动拦截）
-- ✅ CheckOrigin 校验（防御 CSRF/跨源劫持）
-- ✅ Cert rotation（过期前 30 天自动重新签发）
+- ✅ 日志脱敏（Authorization / api_key / token）
+- ✅ CheckOrigin 校验（防御 CSRF / 跨源劫持）
+- ✅ 证书过期前 30 天自动轮换
 
 ---
 
 ## 开发
 
 ```bash
-# 后端测试
+# 后端
 go test ./...
+go build -o dist/mobilecoding.exe ./cmd/server
 
-# 前端构建
+# 前端
 cd web && npm run build
 
-# 运行
-go build -o mobilecoding.exe ./cmd/server
-./mobilecoding.exe
-
-# 日志
-tail -f ~/mobilecoding/logs/mobilecoding-2026-06-02.log
-```
-
----
-
-## 发布
-
-```bash
-git push origin master
-# CI 自动跑测试
-
-git tag v0.1.0
-git push origin v0.1.0
-# Release 自动构建跨平台二进制 + 上传到 GitHub Releases
+# 一键构建
+make build
 ```
 
 ---
