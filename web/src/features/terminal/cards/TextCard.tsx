@@ -42,15 +42,15 @@ function useTypewriter(text: string, isDelta: boolean): string {
     prevFull.current = text;
 
     // 短文本直接显示
-    if (text.length < 80) {
+    if (text.length < 60) {
       setRevealed(text);
       return;
     }
 
-    // 长文本：打字机动画（~40 步，约 1 秒完成）
-    setRevealed('');
-    let i = 0;
-    const totalSteps = 40;
+    // 长文本：打字机动画（~80 步，约 2 秒完成）
+    setRevealed(text.slice(0, 3)); // 先显示前几个字，避免瞬间空白
+    let i = 1;
+    const totalSteps = 80;
     const charsPerStep = Math.max(1, Math.ceil(text.length / totalSteps));
     const timer = setInterval(() => {
       i++;

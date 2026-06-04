@@ -8,7 +8,7 @@ export function InputBar() {
   const [sending, setSending] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  const isThinking = state.thinking;
+  const isActive = state.thinking || state.agentState.status !== 'idle';
 
   // 键盘弹出适配
   useEffect(() => {
@@ -61,7 +61,7 @@ export function InputBar() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isThinking) {
+      if (isActive) {
         handleAbort();
       } else {
         handleSend();
@@ -75,7 +75,7 @@ export function InputBar() {
   };
 
   const placeholder = state.sessionId
-    ? (isThinking ? 'AI 思考中… (Enter 停止)' : '输入消息… (Enter 发送, Shift+Enter 换行)')
+    ? (isActive ? 'AI 思考中… (Enter 停止)' : '输入消息… (Enter 发送, Shift+Enter 换行)')
     : '先点击 Start 启动会话';
 
   return (
@@ -91,7 +91,7 @@ export function InputBar() {
         aria-label="输入消息"
       />
       {state.sessionId ? (
-        isThinking ? (
+        isActive ? (
           <button
             className="btn-stop-action"
             onClick={handleAbort}

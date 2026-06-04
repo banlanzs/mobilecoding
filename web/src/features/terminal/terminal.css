@@ -703,6 +703,20 @@
   white-space: pre-wrap;
 }
 
+/* 工具事件卡片 */
+.card-tool-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 12px;
+  color: #565f89;
+  border-bottom: 1px solid #1f2132;
+}
+
+.tool-event-icon { font-size: 13px; }
+.tool-event-text { color: #9aa5ce; }
+
 /* 上下文窗口卡片 */
 .card-context .card-badge {
   background: rgba(158, 206, 106, 0.15);
