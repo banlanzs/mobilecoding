@@ -74,7 +74,7 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 	settingsEnv := extractSettingsEnv(r.req.Args)
 	filteredArgs := filterSettingsArgs(r.req.Args)
 
-	args := []string{"--print", "--verbose", "--output-format", "stream-json", "--permission-prompt-tool", "stdio"}
+	args := []string{"--print", "--verbose", "--output-format", "stream-json"}
 
 	// 多轮对话：续接上次 session
 	r.mu.Lock()

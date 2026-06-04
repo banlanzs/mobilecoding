@@ -448,8 +448,22 @@ export function ChatProvider({ children }: PropsWithChildren) {
     async (allow: boolean, toolName: string, requestId?: string): Promise<void> => {
       dispatch({ type: 'PERMISSION_ANSWERED' });
       if (state.connectionMode === 'relay' && relayClientRef.current) {
-        relayClientRef.current.sendPermissionAnswer(allow, toolName, requestId);
+        // 优先走新协议（HTTP hook）
+        if (requestId) {
+          relayClientRef.current.sendRespondPermission(requestId, allow);
+        } else {
+          relayClientRef.current.sendPermissionAnswer(allow, toolName, requestId);
+        }
       } else {
+        // direct 模式：优先用 respondPermission（新协议）
+        if (requestId) {
+          try {
+            await client.respondPermission(requestId, allow);
+            return;
+          } catch (err) {
+            console.warn('respondPermission failed, fallback to answerPermission:', err);
+          }
+        }
         await client.answerPermission(allow, toolName, requestId);
       }
     },

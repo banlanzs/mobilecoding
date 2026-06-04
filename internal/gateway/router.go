@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/hook"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/ws"
@@ -29,6 +30,7 @@ type Dependencies struct {
 	DefaultArgs []string
 	Models      string   // 逗号分隔: label:value,...
 	Relay       *relay.Server // Relay 中继服务器
+	HookHandler *hook.Handler // 可选：Claude Code HTTP hook 端点
 }
 
 func NewRouter(deps Dependencies, authToken string) http.Handler {
@@ -91,6 +93,13 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
 		r.Get("/claude-settings", claudeSettingsHandler())
 	})
+
+	// Claude Code HTTP hook 端点（也用 Bearer 鉴权，与 settings.json 注入的 token 一致）
+	if deps.HookHandler != nil {
+		r.With(func(next http.Handler) http.Handler {
+			return auth.BearerMiddleware(authToken, next)
+		}).Post("/v1/hooks/permission-request", deps.HookHandler.ServeHTTP)
+	}
 
 	// Relay 中继端点（不需要认证，使用配对码认证）
 	if deps.Relay != nil {

@@ -17,6 +17,7 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/config"
 	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/gateway"
+	"github.com/banlanzs/mobilecoding/internal/hook"
 	"github.com/banlanzs/mobilecoding/internal/logx"
 	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/relay"
@@ -175,6 +176,25 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	mgr.SetLogger(logger.Info)
 	wsHandler := ws.NewHandler(hub, mgr, logger)
 
+	// 权限 hook：Claude Code 的 PermissionRequest HTTP hook 端点
+	hookRegistry := hook.NewRegistry()
+	hookHandler := hook.NewHandler(hookRegistry, func(ev hook.Event) {
+		// 把权限请求包装成 projection.Event 通过 hub 广播给 WS 客户端
+		pe := projection.PermissionAskEventWithID(ev.SessionID, ev.RequestID, ev.ToolName, ev.ToolInputPrompt)
+		env, err := ws.ProjectionToEnvelope(pe)
+		if err != nil {
+			logger.Error("hook", "wrap event failed: %v", err)
+			return
+		}
+		hub.Broadcast(env)
+	})
+	wsHandler.SetHookRegistry(hookRegistry)
+
+	// 自动注入 hook 到 ~/.claude/settings.json
+	if err := installClaudeHook(cfg, logger); err != nil {
+		logger.Warn("startup", "install Claude hook: %v (continue without)", err)
+	}
+
 	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -190,12 +210,33 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		DefaultArgs: cfg.DefaultArgs,
 		Models:      cfg.Models,
 		Relay:       relayServer,
+		HookHandler: hookHandler,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
 	return srv.ListenAndServeTLS("", "")
+}
+
+// installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
+// 注入是幂等的，多次启动不会重复添加；卸载时调用 SettingsInjector.Uninstall 还原。
+func installClaudeHook(cfg config.Config, logger *logx.Logger) error {
+	path, err := hook.DefaultSettingsPath()
+	if err != nil {
+		return err
+	}
+	inj := hook.NewSettingsInjector(path)
+	url := fmt.Sprintf("http://127.0.0.1:%s/v1/hooks/permission-request", cfg.Port)
+	if err := inj.Install(hook.HookConfig{
+		URL:     url,
+		Token:   cfg.AuthToken,
+		Timeout: 300,
+	}); err != nil {
+		return fmt.Errorf("inject hook: %w", err)
+	}
+	logger.Info("startup", "Claude hook installed: path=%s url=%s", path, url)
+	return nil
 }
 
 // forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接

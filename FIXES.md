@@ -295,3 +295,46 @@ npm run build
 ```
 
 ---
+---
+
+## 问题 4：权限申请弹窗无法拦截（HTTP Hook 修复）
+
+### 症状
+- 修复问题 2/3 后，工具过程和按钮切换都正常，但权限申请弹窗仍然不显示
+- 之前的 commit 0ba7885 假设 Claude Code v2.x 支持 --permission-prompt-tool stdio flag + control_request 协议，但实测 v2.1.161 已移除该能力
+
+### 根本原因
+- v2.1.161 已移除 --permission-prompt-tool flag：旧的 stdio 权限协议废弃
+- v2.1.161 不再发出 control_request 事件：Claude 不再以 stream-json 事件方式传递权限请求
+- 之前实现的 ControlResponse 协议帧虽然格式正确，但永远不会收到对应的 control_request，等形同虚设
+
+### 解决方案：Claude Code HTTP Hook（v2.1+ Feb 2026）
+Claude Code v2.1.161 引入 type: http 的原生 hook（无需额外脚本），由 Claude CLI 直接 POST 到后端 URL。
+
+#### 架构
+[Claude CLI]
+  -> POST /v1/hooks/permission-request ->
+[mobilecoding 后端]
+  -> broadcast hook.Event -> 所有 WS 客户端 ->
+[手机端弹窗]
+  -> 用户 Allow/Deny -> WS permission.respond ->
+[mobilecoding 后端 hook.Registry.Respond()]
+  -> HTTP 响应回 Claude CLI（含 permissionDecision）
+
+#### 关键改动
+- 新增 internal/hook/handler.go：HTTP 端点 /v1/hooks/permission-request
+- 新增 internal/hook/settings.go：启动时把 hook 注入 ~/.claude/settings.json（幂等、可还原）
+- 新增 WS 方法 permission.respond：手机端用 requestId 回应（与旧 session.permission.answer 并存）
+- 后端 wsHandler.SetHookRegistry(reg)：桥接 HTTP handler 和 WS handler
+- gateway.NewRouter 挂载 hook 端点：Bearer token 鉴权
+- 去掉 --permission-prompt-tool stdio：该 flag 已不存在
+- 前端 ChatContext.answerPermission：优先调 respondPermission，回退旧 answerPermission
+- 前端 ws-client/relay-client：新增 respondPermission/sendRespondPermission 方法
+
+#### 验证
+- go test ./internal/hook/ 11/11 通过
+- go test ./internal/projection/ 全过
+- go test ./internal/engine/ 全过
+- go build ./... 通过
+- npx tsc --noEmit 通过
+- npm run build 通过

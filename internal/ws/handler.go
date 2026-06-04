@@ -5,19 +5,26 @@ import (
 	"encoding/json"
 
 	"github.com/banlanzs/mobilecoding/internal/engine"
+	"github.com/banlanzs/mobilecoding/internal/hook"
 	"github.com/banlanzs/mobilecoding/internal/logx"
 	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/session"
 )
 
 type Handler struct {
-	hub    *Hub
-	mgr    *session.Manager
-	logger *logx.Logger
+	hub          *Hub
+	mgr          *session.Manager
+	logger       *logx.Logger
+	hookRegistry *hook.Registry // 可选：用于 permission.respond
 }
 
 func NewHandler(hub *Hub, mgr *session.Manager, logger *logx.Logger) *Handler {
 	return &Handler{hub: hub, mgr: mgr, logger: logger}
+}
+
+// SetHookRegistry 注入 hook.Registry（用于接收手机端 permission.respond）。
+func (h *Handler) SetHookRegistry(reg *hook.Registry) {
+	h.hookRegistry = reg
 }
 
 func (h *Handler) ServeConn(ctx context.Context, c *Conn) error {
@@ -127,6 +134,8 @@ func (h *Handler) dispatch(ctx context.Context, env Envelope) (*Envelope, any) {
 		return h.handleAbort(env)
 	case "session.permission.answer":
 		return h.handlePermissionAnswer(env)
+	case "permission.respond":
+		return h.handlePermissionRespond(env)
 	default:
 		return newErrorRespPtr(env.ID, "not_found", "unknown method: "+env.Method), nil
 	}
@@ -226,6 +235,33 @@ func (h *Handler) handleStop(env Envelope) (*Envelope, any) {
 		return newErrorRespPtr(env.ID, "engine_failure", err.Error()), nil
 	}
 	h.logger.Info("session", "stopped")
+	ok := true
+	return &Envelope{Type: "resp", ID: env.ID, OK: &ok}, nil
+}
+
+// handlePermissionRespond 接收手机端对 HTTP hook 权限请求的回应。
+// 这是新协议（permission.respond），与 session.permission.answer（控制 stdin 旧协议）并存。
+func (h *Handler) handlePermissionRespond(env Envelope) (*Envelope, any) {
+	if h.hookRegistry == nil {
+		return newErrorRespPtr(env.ID, "not_configured", "hook registry not configured"), nil
+	}
+	var p struct {
+		RequestID string `json:"requestId"`
+		Allow     bool   `json:"allow"`
+		Reason    string `json:"reason"`
+	}
+	if err := json.Unmarshal(env.Params, &p); err != nil {
+		return newErrorRespPtr(env.ID, "protocol_error", "invalid params"), nil
+	}
+	if p.RequestID == "" {
+		return newErrorRespPtr(env.ID, "protocol_error", "requestId required"), nil
+	}
+	h.logger.Info("session", "permission.respond: id=%s allow=%v reason=%q", p.RequestID, p.Allow, p.Reason)
+	if !h.hookRegistry.Respond(p.RequestID, hook.Decision{Allow: p.Allow, Reason: p.Reason}) {
+		// 未知 / 过期 id：可能客户端响应太晚，HTTP handler 已经超时
+		h.logger.Warn("session", "permission.respond: unknown or expired id=%s", p.RequestID)
+		return newErrorRespPtr(env.ID, "stale_request", "request not found or already resolved"), nil
+	}
 	ok := true
 	return &Envelope{Type: "resp", ID: env.ID, OK: &ok}, nil
 }

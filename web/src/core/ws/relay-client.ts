@@ -65,6 +65,19 @@ export class RelayClient {
     }
   }
 
+  // sendRespondPermission 走新协议（HTTP hook），与 sendPermissionAnswer 并存
+  sendRespondPermission(requestId: string, allow: boolean, reason?: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('not connected');
+    }
+    this.sendRelayForward(JSON.stringify({
+      type: 'permission.respond',
+      requestId,
+      allow,
+      reason,
+    }));
+  }
+
   private sendRelayForward(payload: string): void {
     const envelope = {
       type: 'relay.forward',

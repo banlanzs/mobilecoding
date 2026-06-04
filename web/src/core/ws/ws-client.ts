@@ -95,6 +95,12 @@ export class WSClient {
     await this.send('session.permission.answer', { allow, toolName, requestId });
   }
 
+  // respondPermission 走新协议（HTTP hook），与 answerPermission（旧 stdio 协议）并存。
+  // 优先调用：permission.respond（Claude Code v2.1+ HTTP hook 流程）
+  async respondPermission(requestId: string, allow: boolean, reason?: string): Promise<void> {
+    await this.send('permission.respond', { requestId, allow, reason });
+  }
+
   async abortTurn(): Promise<void> {
     await this.send('session.abort');
   }
