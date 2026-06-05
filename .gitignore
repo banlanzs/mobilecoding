@@ -34,3 +34,6 @@ mobilecoding
 #cli
 .claude/
 .gemini/
+
+#resources
+ui-template/

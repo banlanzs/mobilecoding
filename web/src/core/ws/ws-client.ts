@@ -6,6 +6,14 @@ import type {
   SessionStartParams,
   SessionStartResult,
 } from './types';
+import {
+  METHOD_SESSION_START,
+  METHOD_SESSION_INPUT,
+  METHOD_SESSION_ABORT,
+  METHOD_SESSION_STOP,
+  METHOD_SESSION_PERMISSION_ANSWER,
+  METHOD_PERMISSION_RESPOND,
+} from './protocol';
 
 type EventCallback = (event: AppEvent, sessionId?: string) => void;
 type StatusCallback = (status: ConnectionStatus) => void;
@@ -84,29 +92,28 @@ export class WSClient {
   }
 
   async startSession(params: SessionStartParams): Promise<SessionStartResult> {
-    return this.send<SessionStartResult>('session.start', params);
+    return this.send<SessionStartResult>(METHOD_SESSION_START, params);
   }
 
   async sendInput(text: string): Promise<void> {
-    await this.send('session.input', { text });
+    await this.send(METHOD_SESSION_INPUT, { text });
   }
 
   async answerPermission(allow: boolean, toolName: string, requestId?: string): Promise<void> {
-    await this.send('session.permission.answer', { allow, toolName, requestId });
+    await this.send(METHOD_SESSION_PERMISSION_ANSWER, { allow, toolName, requestId });
   }
 
   // respondPermission 走新协议（HTTP hook），与 answerPermission（旧 stdio 协议）并存。
-  // 优先调用：permission.respond（Claude Code v2.1+ HTTP hook 流程）
   async respondPermission(requestId: string, allow: boolean, reason?: string): Promise<void> {
-    await this.send('permission.respond', { requestId, allow, reason });
+    await this.send(METHOD_PERMISSION_RESPOND, { requestId, allow, reason });
   }
 
   async abortTurn(): Promise<void> {
-    await this.send('session.abort');
+    await this.send(METHOD_SESSION_ABORT);
   }
 
   async stopSession(): Promise<void> {
-    await this.send('session.stop');
+    await this.send(METHOD_SESSION_STOP);
   }
 
   onEvent(cb: EventCallback): () => void {

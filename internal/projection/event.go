@@ -1,42 +1,38 @@
 // Package projection 把 engine.Runner 输出的原始字节流翻译成结构化事件。
-// MVP 1 阶段：只做 raw 文本事件与 lifecycle 透传。
-// 后续 MVP：加入 diff / permission / plan / context_window 等高级投影。
 package projection
 
 import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/banlanzs/mobilecoding/internal/protocol"
 )
 
-// EventType 区分投影后的事件类型。
-type EventType string
+// EventType 区分投影后的事件类型。值定义在 protocol 包中。
+type EventType = string
 
+// 向后兼容别名：引用 protocol 包常量。
 const (
-	// 现有类型（保持向后兼容）
-	EventText          EventType = "text"
-	EventTextDelta     EventType = "text_delta"
-	EventLifecycle     EventType = "lifecycle"
-	EventToolUse       EventType = "tool_use"
-	EventToolResult    EventType = "tool_result"
-	EventPermissionReq EventType = "permission_request"
-	EventPlanMode      EventType = "plan_mode"
-	EventContextWindow EventType = "context_window"
-	EventSession       EventType = "session"
-
-	// 新增统一 Agent 事件类型
-	EventThinkingStart EventType = "thinking_start" // 思考开始
-	EventThinkingDelta EventType = "thinking_delta" // 思考增量
-	EventThinkingEnd   EventType = "thinking_end"   // 思考结束
-	EventToolStart     EventType = "tool_start"     // 工具开始执行
-	EventToolOutput    EventType = "tool_output"    // 工具流式输出
-	EventToolEnd       EventType = "tool_end"       // 工具执行完成
-	EventBashStart     EventType = "bash_start"     // Bash 命令开始
-	EventBashOutput    EventType = "bash_output"    // Bash 流式输出
-	EventBashEnd       EventType = "bash_end"       // Bash 命令完成
-	EventAgentState    EventType = "agent_state"    // Agent 状态变更
-	EventTurnEnd       EventType = "turn_end"       // 整轮结束（Claude result 事件）
-	EventPermissionAsk EventType = "permission_ask" // Claude stdio permission_request
+	EventText          = protocol.EvtText
+	EventTextDelta     = protocol.EvtTextDelta
+	EventLifecycle     = protocol.EvtLifecycle
+	EventToolUse       = protocol.EvtToolUse
+	EventToolResult    = protocol.EvtToolResult
+	EventPermissionReq = protocol.EvtPermissionReq
+	EventPlanMode      = protocol.EvtPlanMode
+	EventContextWindow = protocol.EvtContextWindow
+	EventSession       = protocol.EvtSession
+	EventThinkingStart = protocol.EvtThinkingStart
+	EventThinkingEnd   = protocol.EvtThinkingEnd
+	EventToolStart     = protocol.EvtToolStart
+	EventToolOutput    = protocol.EvtToolOutput
+	EventToolEnd       = protocol.EvtToolEnd
+	EventBashStart     = protocol.EvtBashStart
+	EventBashOutput    = protocol.EvtBashOutput
+	EventBashEnd       = protocol.EvtBashEnd
+	EventAgentState    = protocol.EvtAgentState
+	EventTurnEnd       = protocol.EvtTurnEnd
+	EventPermissionAsk = protocol.EvtPermissionAsk
 )
 
 // Event 是投影后的事件（前端订阅的契约）。
