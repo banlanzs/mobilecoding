@@ -6,6 +6,7 @@ import { SessionBar } from './SessionBar';
 import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
 import { PermissionBanner } from './PermissionBanner';
+import { Onboarding } from './Onboarding';
 import './terminal.css';
 
 export function TerminalPage() {
@@ -32,6 +33,9 @@ export function TerminalPage() {
     );
   }
 
+  // 无消息且无活跃 session 时显示引导页
+  const showOnboarding = state.messages.length === 0 && !state.sessionId;
+
   return (
     <div className="terminal">
       <ConnectionBar />
@@ -40,7 +44,11 @@ export function TerminalPage() {
       {state.lastError && (
         <div className="error-msg">{state.lastError}</div>
       )}
-      <MessageList />
+      {showOnboarding ? (
+        <Onboarding token={localStorage.getItem('mobilecoding.token') || ''} />
+      ) : (
+        <MessageList />
+      )}
       <InputBar />
       <PermissionBanner />
     </div>

@@ -637,6 +637,134 @@
   color: #1a1b26;
 }
 
+/* Onboarding 引导页 */
+.onboarding {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.onboarding-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.onboarding-header h1 {
+  font-size: 24px;
+  color: #c0caf5;
+  margin: 0;
+}
+
+.onboarding-subtitle {
+  color: #565f89;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.onboarding-card {
+  background: rgba(36, 40, 59, 0.8);
+  border: 1px solid #3b4261;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.onboarding-card h2 {
+  font-size: 16px;
+  color: #e0af68;
+  margin: 0 0 12px;
+}
+
+.onboarding-card ol {
+  margin: 0;
+  padding-left: 20px;
+  color: #a9b1d6;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.onboarding-card code {
+  background: rgba(122, 162, 247, 0.15);
+  color: #7aa2f7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.agent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(26, 27, 38, 0.6);
+  border-radius: 6px;
+  border: 1px solid #3b4261;
+}
+
+.agent-name {
+  color: #c0caf5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.agent-cmd {
+  color: #565f89;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.agent-empty {
+  color: #565f89;
+  font-size: 13px;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+.connect-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connect-info p {
+  margin: 0;
+  color: #a9b1d6;
+  font-size: 13px;
+}
+
+.connect-info code {
+  background: rgba(122, 162, 247, 0.15);
+  color: #7aa2f7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.status-ok {
+  color: #9ece6a;
+}
+
+.onboarding-footer {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.onboarding-footer p {
+  color: #565f89;
+  font-size: 13px;
+  margin: 0;
+}
+
 /* 生命周期事件 */
 .card-lifecycle .card-badge {
   background: rgba(86, 95, 137, 0.3);
