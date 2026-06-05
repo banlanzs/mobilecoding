@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -38,16 +36,11 @@ func runLocal(session *Session) SwitchSignal {
 	fmt.Fprintf(os.Stderr, "  服务器已启动: https://%s\n", session.ServerAddr)
 	printConnectInfo(session)
 
-	// 2. 启动 CLI 子进程，pipe stdout 捕获 session_id
+	// 2. 启动 CLI 子进程（正常交互模式，继承 stdin/stdout/stderr）
 	cliCmd := exec.Command(session.Command, session.Args...)
 	cliCmd.Stdin = os.Stdin
+	cliCmd.Stdout = os.Stdout
 	cliCmd.Stderr = os.Stderr
-
-	stdoutPipe, err := cliCmd.StdoutPipe()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "创建 stdout pipe 失败: %v\n", err)
-		return ExitLoop
-	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -72,10 +65,6 @@ func runLocal(session *Session) SwitchSignal {
 		}
 	}()
 
-	// 读取 stdout，解析 session_id，同时输出到终端
-	sessionIDCh := make(chan string, 1)
-	go scanSessionID(stdoutPipe, sessionIDCh)
-
 	// 3. 轮询 server 检测客户端连接
 	clientConnected := make(chan struct{})
 	go pollClientStatus(session.ServerAddr, clientConnected)
@@ -86,23 +75,11 @@ func runLocal(session *Session) SwitchSignal {
 			fmt.Fprintf(os.Stderr, "\033[31m%s 退出: %v\033[0m\n", session.Command, err)
 		}
 		return ExitLoop
-	case resumeID := <-sessionIDCh:
-		session.ResumeID = resumeID
-		fmt.Fprintf(os.Stderr, "\033[36m[session captured: %s]\033[0m\n", resumeID[:12])
-		// 继续等待手机连接或 CLI 退出
-		select {
-		case err := <-done:
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "\033[31m%s 退出: %v\033[0m\n", session.Command, err)
-			}
-			return ExitLoop
-		case <-clientConnected:
-			return switchToRemote(session, cliCmd, done)
-		case sig := <-session.switchCh:
-			return sig
-		}
 	case <-clientConnected:
-		// 手机连接但还没捕获到 session_id
+		// 手机连接，从 server 获取 resume ID（server 在手机启动会话时自动捕获）
+		if id, err := fetchResumeID(session.ServerAddr); err == nil && id != "" {
+			session.ResumeID = id
+		}
 		return switchToRemote(session, cliCmd, done)
 	case sig := <-session.switchCh:
 		if cliCmd.Process != nil {
@@ -120,63 +97,38 @@ func switchToRemote(session *Session, cliCmd *exec.Cmd, done chan error) SwitchS
 		cliCmd.Process.Signal(syscall.SIGTERM)
 		<-done
 	}
-	// 通知 server resume 同一个 Claude 会话
+	// 通知 server 设置 resume ID（如果已捕获）
 	if session.ResumeID != "" {
-		if err := notifyResume(session.ServerAddr, session.ResumeID); err != nil {
+		if err := sendResumeID(session.ServerAddr, session.ResumeID); err != nil {
 			fmt.Fprintf(os.Stderr, "\033[31m通知 resume 失败: %v\033[0m\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "  会话已恢复: %s\n", session.ResumeID[:12])
+			fmt.Fprintf(os.Stderr, "  会话将恢复: %s\n", session.ResumeID[:min(12, len(session.ResumeID))])
 		}
 	}
 	return SwitchToRemote
 }
 
-// scanSessionID 从 Claude 的 JSONL stdout 中提取 session_id。
-// 同时将所有输出转发到 stderr（保持终端显示）。
-func scanSessionID(r io.Reader, found chan<- string) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		// 输出到终端
-		os.Stdout.Write(line)
-		os.Stdout.Write([]byte("\n"))
-		// 解析 session_id
-		var m map[string]any
-		if err := json.Unmarshal(line, &m); err != nil {
-			continue
-		}
-		if sid, ok := m["session_id"].(string); ok && sid != "" {
-			select {
-			case found <- sid:
-			default:
-			}
-		}
-	}
-}
-
-// notifyResume 通知 server 使用指定的 session_id resume Claude 会话。
-func notifyResume(addr, resumeID string) error {
+// sendResumeID 发送 resume session ID 给 server。
+func sendResumeID(addr, resumeID string) error {
 	client := &http.Client{Timeout: 5 * time.Second}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client.Transport = transport
-
 	body := strings.NewReader(fmt.Sprintf(`{"resumeSessionId":"%s"}`, resumeID))
-	resp, err := client.Post(
-		fmt.Sprintf("https://%s/api/v1/resume", addr),
-		"application/json",
-		body,
-	)
+	resp, err := client.Post(fmt.Sprintf("https://%s/api/v1/resume", addr), "application/json", body)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned %d", resp.StatusCode)
-	}
 	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // startServer 启动 mobilecoding server 子进程。
