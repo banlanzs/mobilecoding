@@ -96,6 +96,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
 		r.Get("/messages", messagesHandler(deps.MsgStore))
+		r.Get("/clients", clientsHandler(deps.WS))
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
@@ -377,6 +378,19 @@ func messagesHandler(msgStore *store.MessageStore) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response{Messages: msgs, HasMore: hasMore})
+	}
+}
+
+// clientsHandler 返回当前 WebSocket 客户端连接数。
+// 供 CLI 包装器轮询检测手机连接状态。
+func clientsHandler(wsHandler *ws.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		count := 0
+		if wsHandler != nil {
+			count = wsHandler.SubscriberCount()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"subscribers": count})
 	}
 }
 

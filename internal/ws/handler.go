@@ -28,6 +28,11 @@ func (h *Handler) SetHookRegistry(reg *hook.Registry) {
 	h.hookRegistry = reg
 }
 
+// SubscriberCount 返回当前 WebSocket 订阅者数量。
+func (h *Handler) SubscriberCount() int {
+	return h.hub.SubscriberCount()
+}
+
 func (h *Handler) ServeConn(ctx context.Context, c *Conn) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
