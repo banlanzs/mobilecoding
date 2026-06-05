@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +15,7 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/auth"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/store"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
@@ -27,8 +29,9 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
-	Models      string        // 逗号分隔: label:value,...
-	Relay       *relay.Server // Relay 中继服务器
+	Models      string           // 逗号分隔: label:value,...
+	Relay       *relay.Server    // Relay 中继服务器
+	MsgStore    *store.MessageStore // 消息持久化存储（可选）
 	// HookHandler 已移至独立 HTTP 监听器（startHookListener），不通过主 router 提供。
 }
 
@@ -92,6 +95,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
+		r.Get("/messages", messagesHandler(deps.MsgStore))
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
@@ -311,6 +315,69 @@ func parseModels(raw string) []map[string]string {
 		models = append(models, map[string]string{"label": "默认模型", "value": ""})
 	}
 	return models
+}
+
+// messagesHandler 返回历史消息查询 API。
+// GET /api/v1/messages?session_id=xxx&after_seq=0&limit=100
+// GET /api/v1/messages?session_id=xxx&before_seq=999&limit=100
+func messagesHandler(msgStore *store.MessageStore) http.HandlerFunc {
+	type response struct {
+		Messages []store.SequencedMessage `json:"messages"`
+		HasMore  bool                     `json:"hasMore"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if msgStore == nil {
+			http.Error(w, "message store not available", http.StatusServiceUnavailable)
+			return
+		}
+		sessionID := r.URL.Query().Get("session_id")
+		if sessionID == "" {
+			http.Error(w, "session_id required", http.StatusBadRequest)
+			return
+		}
+		limit := 100
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+				limit = n
+			}
+		}
+		afterStr := r.URL.Query().Get("after_seq")
+		beforeStr := r.URL.Query().Get("before_seq")
+
+		var msgs []store.SequencedMessage
+		var err error
+		switch {
+		case afterStr != "" && beforeStr != "":
+			http.Error(w, "after_seq and before_seq are mutually exclusive", http.StatusBadRequest)
+			return
+		case afterStr != "":
+			afterSeq, e := strconv.ParseInt(afterStr, 10, 64)
+			if e != nil {
+				http.Error(w, "invalid after_seq", http.StatusBadRequest)
+				return
+			}
+			msgs, err = msgStore.GetMessagesAfter(sessionID, afterSeq, limit)
+		case beforeStr != "":
+			beforeSeq, e := strconv.ParseInt(beforeStr, 10, 64)
+			if e != nil {
+				http.Error(w, "invalid before_seq", http.StatusBadRequest)
+				return
+			}
+			msgs, err = msgStore.GetMessagesBefore(sessionID, beforeSeq, limit)
+		default:
+			msgs, err = msgStore.GetMessagesAfter(sessionID, 0, limit)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		hasMore := len(msgs) > limit
+		if hasMore {
+			msgs = msgs[:limit]
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response{Messages: msgs, HasMore: hasMore})
+	}
 }
 
 func deviceCertHandler(ca *auth.CA) http.HandlerFunc {

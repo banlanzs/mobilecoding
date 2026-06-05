@@ -68,6 +68,7 @@ export interface BaseEvent {
   type: EventType;
   sessionId: string;
   time: string; // RFC3339 ISO 8601
+  seq?: number; // 消息序列号，用于断线重连补发
   messageId?: string; // 后端生成，用于去重和 requestId 关联
 }
 

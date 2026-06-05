@@ -25,6 +25,7 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/store"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
@@ -186,6 +187,15 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		logger.Warn("startup", "embedded web/ missing; using stub SPA")
 	}
 
+	// 消息持久化存储
+	msgStore, err := store.Open("")
+	if err != nil {
+		logger.Warn("startup", "open message store: %v (continuing without persistence)", err)
+	} else {
+		defer msgStore.Close()
+		logger.Info("startup", "message store ready")
+	}
+
 	// 创建 relay 服务器
 	relayServer := relay.NewServer(relay.DefaultSessionConfig())
 
@@ -225,7 +235,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go forwardSessionEvents(ctx, mgr, hub, logger)
+	go forwardSessionEvents(ctx, mgr, hub, logger, msgStore)
 
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,
@@ -237,6 +247,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		DefaultArgs: cfg.DefaultArgs,
 		Models:      cfg.Models,
 		Relay:       relayServer,
+		MsgStore:    msgStore,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
@@ -310,7 +321,7 @@ func pickHookPort(mainPort string) string {
 }
 
 // forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接
-func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger) {
+func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger, msgStore *store.MessageStore) {
 	input := mgr.Output()
 	fwdCount := 0
 
@@ -331,6 +342,15 @@ func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub
 			logger.Debug("broadcast", "event kind=%s projected=%d", ev.Kind, len(projEvents))
 
 			for _, pe := range projEvents {
+				// 持久化消息并分配 seq
+				if msgStore != nil {
+					seq, err := msgStore.SaveMessage(sid, pe)
+					if err != nil {
+						logger.Error("store", "save message: %v", err)
+					} else {
+						pe.Seq = seq
+					}
+				}
 				env, err := ws.ProjectionToEnvelope(pe)
 				if err != nil {
 					logger.Error("broadcast", "projectionToEnvelope failed: %v", err)

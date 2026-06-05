@@ -60,6 +60,7 @@ export interface ChatState {
   status: ConnectionStatus;
   sessionId: string | null;
   messages: DisplayMessage[];
+  lastSeq: number; // 最后收到的消息 seq，用于断线重连补发
   permissionPrompt: PermissionRequestEvent | null;
   permissionRequestId: string | null; // Claude stdio protocol request_id
   lastError: string | null;
@@ -102,6 +103,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         ...state,
         sessionId: action.sessionId,
         messages: [],
+        lastSeq: 0,
         lastError: null,
         thinking: false,
         turnActive: false,
@@ -196,6 +198,11 @@ function reducer(state: ChatState, action: Action): ChatState {
         messages,
         sessionId: action.sessionId || state.sessionId,
       };
+
+      // 追踪最新 seq
+      if (ev.seq && ev.seq > state.lastSeq) {
+        next.lastSeq = ev.seq;
+      }
 
       // 处理权限请求：兼容两种事件类型
       if (ev.type === 'permission_request' || ev.type === 'permission_ask') {
@@ -305,6 +312,7 @@ const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
   messages: loadMessages(),
+  lastSeq: 0,
   permissionPrompt: null,
   permissionRequestId: null,
   lastError: null,
@@ -358,6 +366,35 @@ export function ChatProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     dispatch({ type: 'STATUS_CHANGED', status });
   }, [status]);
+
+  // 断线重连补发：连接成功后，如果有 lastSeq 且有 sessionId，通过 HTTP 补发缺失消息
+  useEffect(() => {
+    if (status !== 'connected' || state.connectionMode !== 'direct') return;
+    if (!state.sessionId || state.lastSeq <= 0) return;
+    const fetchMissed = async () => {
+      try {
+        const token = localStorage.getItem('mobilecoding.token');
+        const url = `/api/v1/messages?session_id=${encodeURIComponent(state.sessionId!)}&after_seq=${state.lastSeq}&limit=200`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const missed = (data.messages || []) as Array<{ seq: number; type: string; content: string }>;
+        if (missed.length === 0) return;
+        console.log('[RECONNECT] fetched', missed.length, 'missed messages after seq', state.lastSeq);
+        for (const msg of missed) {
+          try {
+            const event = JSON.parse(msg.content) as AppEvent;
+            dispatch({ type: 'EVENT_RECEIVED', event, sessionId: state.sessionId! });
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('[RECONNECT] fetch missed messages failed:', err);
+      }
+    };
+    fetchMissed();
+  }, [status, state.connectionMode]); // 仅在连接状态变化时触发
 
   // 订阅 WebSocket 事件
   useEffect(() => {

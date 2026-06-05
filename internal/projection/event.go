@@ -44,6 +44,7 @@ type Event struct {
 	Type       EventType `json:"type"`
 	SessionID  string    `json:"sessionId"`
 	Time       time.Time `json:"time"`
+	Seq        int64     `json:"seq,omitempty"` // 消息序列号，由 store 分配
 	Text       string    `json:"text,omitempty"`
 	Thinking   string    `json:"thinking,omitempty"` // 模型思考过程，折叠展示
 	Message    string    `json:"message,omitempty"`

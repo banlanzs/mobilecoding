@@ -31,3 +31,6 @@ Thumbs.db
 coverage.out
 mobilecoding
 
+#cli
+.claude/
+.gemini/
