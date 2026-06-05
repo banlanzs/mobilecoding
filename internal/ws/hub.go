@@ -26,8 +26,13 @@ func (h *Hub) SetCallbacks(onConnect, onDisconnect func()) {
 	h.onDisconnect = onDisconnect
 }
 
-func (h *Hub) Subscribe() chan Envelope {
-	ch := make(chan Envelope, 128)
+// Subscribe 订阅事件流。bufferSize 为 0 时使用默认值 128。
+func (h *Hub) Subscribe(bufferSize ...int) chan Envelope {
+	size := 128
+	if len(bufferSize) > 0 && bufferSize[0] > 0 {
+		size = bufferSize[0]
+	}
+	ch := make(chan Envelope, size)
 	h.mu.Lock()
 	h.subscribers[ch] = struct{}{}
 	cb := h.onConnect

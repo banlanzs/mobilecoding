@@ -239,7 +239,11 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go forwardSessionEvents(ctx, mgr, hub, logger, msgStore)
+	var saveCh chan<- saveRequest
+	if msgStore != nil {
+		saveCh = startAsyncWriter(ctx, msgStore, logger)
+	}
+	go forwardSessionEvents(ctx, mgr, hub, logger, saveCh)
 
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,
@@ -324,8 +328,36 @@ func pickHookPort(mainPort string) string {
 	return strconv.Itoa(n + 1)
 }
 
+// saveRequest 异步写入请求。
+type saveRequest struct {
+	sessionID string
+	event     *projection.Event
+}
+
+// startAsyncWriter 启动异步消息写入 goroutine。
+// 从 saveCh 读取请求，写入数据库后将 seq 回填到 event。
+func startAsyncWriter(ctx context.Context, msgStore *store.MessageStore, logger *logx.Logger) chan<- saveRequest {
+	ch := make(chan saveRequest, 512)
+	go func() {
+		for {
+			select {
+			case req := <-ch:
+				seq, err := msgStore.SaveMessage(req.sessionID, *req.event)
+				if err != nil {
+					logger.Error("store", "async save failed: %v", err)
+				} else {
+					req.event.Seq = seq
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch
+}
+
 // forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接
-func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger, msgStore *store.MessageStore) {
+func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger, saveCh chan<- saveRequest) {
 	input := mgr.Output()
 	fwdCount := 0
 
@@ -346,14 +378,9 @@ func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub
 			logger.Debug("broadcast", "event kind=%s projected=%d", ev.Kind, len(projEvents))
 
 			for _, pe := range projEvents {
-				// 持久化消息并分配 seq
-				if msgStore != nil {
-					seq, err := msgStore.SaveMessage(sid, pe)
-					if err != nil {
-						logger.Error("store", "save message: %v", err)
-					} else {
-						pe.Seq = seq
-					}
+				// 异步持久化消息，seq 由 writer goroutine 分配后回填
+				if saveCh != nil {
+					saveCh <- saveRequest{sessionID: sid, event: &pe}
 				}
 				env, err := ws.ProjectionToEnvelope(pe)
 				if err != nil {
