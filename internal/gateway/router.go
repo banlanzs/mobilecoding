@@ -70,6 +70,10 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		})
 	})
 
+	// 客户端状态端点（不需要认证，供 mc CLI 轮询检测手机连接）
+	r.Get("/api/v1/clients", clientsHandler(deps.WS))
+	r.Get("/api/v1/session-id", sessionIDHandler(deps.Session))
+
 	r.With(func(next http.Handler) http.Handler {
 		return auth.BearerMiddleware(authToken, next)
 	}).Handle("/api/v1/ws", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -96,8 +100,6 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
 		r.Get("/messages", messagesHandler(deps.MsgStore))
-		r.Get("/clients", clientsHandler(deps.WS))
-		r.Get("/session-id", sessionIDHandler(deps.Session))
 		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
 	})
 
