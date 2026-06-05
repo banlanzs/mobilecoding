@@ -99,6 +99,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
 		r.Get("/messages", messagesHandler(deps.MsgStore))
+		r.Get("/search", searchHandler(deps.MsgStore))
 		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
 	})
 
@@ -403,6 +404,38 @@ func clientsHandler(wsHandler *ws.Handler) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]int{"subscribers": count})
+	}
+}
+
+// searchHandler 搜索消息内容。
+func searchHandler(msgStore *store.MessageStore) http.HandlerFunc {
+	type response struct {
+		Results []store.SearchResult `json:"results"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if msgStore == nil {
+			http.Error(w, "message store not available", http.StatusServiceUnavailable)
+			return
+		}
+		sessionID := r.URL.Query().Get("session_id")
+		query := r.URL.Query().Get("q")
+		if sessionID == "" || query == "" {
+			http.Error(w, "session_id and q required", http.StatusBadRequest)
+			return
+		}
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+				limit = n
+			}
+		}
+		results, err := msgStore.SearchMessages(sessionID, query, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response{Results: results})
 	}
 }
 
