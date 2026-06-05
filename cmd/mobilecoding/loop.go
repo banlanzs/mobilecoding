@@ -31,6 +31,7 @@ type Session struct {
 	Port       string   // 服务器端口
 	ServerAddr string   // 服务器地址（host:port）
 	AuthToken  string   // 认证 token
+	ResumeID   string   // Claude --resume session_id（跨模式恢复）
 	switchCh   chan SwitchSignal
 }
 

@@ -1,21 +1,24 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
 
 // runLocal 运行本地模式：
 // 1. 启动 mobilecoding server（后台子进程）
-// 2. 启动 CLI（如 claude），继承 stdin/stdout
+// 2. 启动 CLI（如 claude），通过 pipe 捕获 session_id
 // 3. 轮询 server 检测手机连接，自动切换到远程模式
 func runLocal(session *Session) SwitchSignal {
 	fmt.Fprintf(os.Stderr, "\033[32m✓ 本地模式：直接在终端使用 %s\033[0m\n", session.Command)
@@ -33,15 +36,18 @@ func runLocal(session *Session) SwitchSignal {
 		return ExitLoop
 	}
 	fmt.Fprintf(os.Stderr, "  服务器已启动: https://%s\n", session.ServerAddr)
-
-	// 打印连接信息
 	printConnectInfo(session)
 
-	// 2. 启动 CLI 子进程
+	// 2. 启动 CLI 子进程，pipe stdout 捕获 session_id
 	cliCmd := exec.Command(session.Command, session.Args...)
 	cliCmd.Stdin = os.Stdin
-	cliCmd.Stdout = os.Stdout
 	cliCmd.Stderr = os.Stderr
+
+	stdoutPipe, err := cliCmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "创建 stdout pipe 失败: %v\n", err)
+		return ExitLoop
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -66,6 +72,10 @@ func runLocal(session *Session) SwitchSignal {
 		}
 	}()
 
+	// 读取 stdout，解析 session_id，同时输出到终端
+	sessionIDCh := make(chan string, 1)
+	go scanSessionID(stdoutPipe, sessionIDCh)
+
 	// 3. 轮询 server 检测客户端连接
 	clientConnected := make(chan struct{})
 	go pollClientStatus(session.ServerAddr, clientConnected)
@@ -76,14 +86,24 @@ func runLocal(session *Session) SwitchSignal {
 			fmt.Fprintf(os.Stderr, "\033[31m%s 退出: %v\033[0m\n", session.Command, err)
 		}
 		return ExitLoop
-	case <-clientConnected:
-		// 手机连接，杀掉本地 CLI，切到远程模式
-		fmt.Fprintf(os.Stderr, "\n\033[33m⟳ 手机已连接，切换到远程模式...\033[0m\n")
-		if cliCmd.Process != nil {
-			cliCmd.Process.Signal(syscall.SIGTERM)
-			<-done
+	case resumeID := <-sessionIDCh:
+		session.ResumeID = resumeID
+		fmt.Fprintf(os.Stderr, "\033[36m[session captured: %s]\033[0m\n", resumeID[:12])
+		// 继续等待手机连接或 CLI 退出
+		select {
+		case err := <-done:
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\033[31m%s 退出: %v\033[0m\n", session.Command, err)
+			}
+			return ExitLoop
+		case <-clientConnected:
+			return switchToRemote(session, cliCmd, done)
+		case sig := <-session.switchCh:
+			return sig
 		}
-		return SwitchToRemote
+	case <-clientConnected:
+		// 手机连接但还没捕获到 session_id
+		return switchToRemote(session, cliCmd, done)
 	case sig := <-session.switchCh:
 		if cliCmd.Process != nil {
 			cliCmd.Process.Signal(syscall.SIGTERM)
@@ -93,16 +113,81 @@ func runLocal(session *Session) SwitchSignal {
 	}
 }
 
+// switchToRemote 切换到远程模式：杀掉本地 CLI，通知 server resume 会话。
+func switchToRemote(session *Session, cliCmd *exec.Cmd, done chan error) SwitchSignal {
+	fmt.Fprintf(os.Stderr, "\n\033[33m⟳ 手机已连接，切换到远程模式...\033[0m\n")
+	if cliCmd.Process != nil {
+		cliCmd.Process.Signal(syscall.SIGTERM)
+		<-done
+	}
+	// 通知 server resume 同一个 Claude 会话
+	if session.ResumeID != "" {
+		if err := notifyResume(session.ServerAddr, session.ResumeID); err != nil {
+			fmt.Fprintf(os.Stderr, "\033[31m通知 resume 失败: %v\033[0m\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "  会话已恢复: %s\n", session.ResumeID[:12])
+		}
+	}
+	return SwitchToRemote
+}
+
+// scanSessionID 从 Claude 的 JSONL stdout 中提取 session_id。
+// 同时将所有输出转发到 stderr（保持终端显示）。
+func scanSessionID(r io.Reader, found chan<- string) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		// 输出到终端
+		os.Stdout.Write(line)
+		os.Stdout.Write([]byte("\n"))
+		// 解析 session_id
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err != nil {
+			continue
+		}
+		if sid, ok := m["session_id"].(string); ok && sid != "" {
+			select {
+			case found <- sid:
+			default:
+			}
+		}
+	}
+}
+
+// notifyResume 通知 server 使用指定的 session_id resume Claude 会话。
+func notifyResume(addr, resumeID string) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client.Transport = transport
+
+	body := strings.NewReader(fmt.Sprintf(`{"resumeSessionId":"%s"}`, resumeID))
+	resp, err := client.Post(
+		fmt.Sprintf("https://%s/api/v1/resume", addr),
+		"application/json",
+		body,
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // startServer 启动 mobilecoding server 子进程。
 func startServer(port string) *exec.Cmd {
-	// 查找 mobilecoding 可执行文件：优先 dist/，再 PATH
 	serverBin := findServerBinary()
 	if serverBin == "" {
 		fmt.Fprintf(os.Stderr, "找不到 mobilecoding 可执行文件，请先运行 make build\n")
 		return nil
 	}
 	cmd := exec.Command(serverBin, "-port", port)
-	cmd.Stdout = os.Stderr // server 日志输出到 stderr
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "启动服务器失败: %v\n", err)
@@ -111,33 +196,6 @@ func startServer(port string) *exec.Cmd {
 	return cmd
 }
 
-// findServerBinary 查找 mobilecoding 可执行文件。
-func findServerBinary() string {
-	// 1. 尝试 dist/ 目录（开发环境）
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		candidates := []string{
-			filepath.Join(dir, "mobilecoding"),
-			filepath.Join(dir, "mobilecoding.exe"),
-			filepath.Join(dir, "..", "dist", "mobilecoding"),
-			filepath.Join(dir, "..", "dist", "mobilecoding.exe"),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				return c
-			}
-		}
-	}
-	// 2. 尝试 PATH
-	for _, name := range []string{"mobilecoding", "mobilecoding.exe"} {
-		if _, err := exec.LookPath(name); err == nil {
-			return name
-		}
-	}
-	return ""
-}
-
-// stopServer 停止 server 子进程。
 func stopServer(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		cmd.Process.Signal(syscall.SIGTERM)
@@ -145,15 +203,12 @@ func stopServer(cmd *exec.Cmd) {
 	}
 }
 
-// waitForServer 等待 server 就绪。
 func waitForServer(addr string) bool {
 	client := &http.Client{Timeout: 1 * time.Second}
-	// 跳过 TLS 验证（自签名证书）
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client.Transport = transport
-
 	for i := 0; i < 30; i++ {
 		resp, err := client.Get(fmt.Sprintf("https://%s/healthz", addr))
 		if err == nil {
@@ -165,7 +220,6 @@ func waitForServer(addr string) bool {
 	return false
 }
 
-// pollClientStatus 轮询 server 检测是否有 WebSocket 客户端连接。
 func pollClientStatus(addr string, connected chan<- struct{}) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	transport := &http.Transport{
@@ -195,7 +249,29 @@ func pollClientStatus(addr string, connected chan<- struct{}) {
 	}
 }
 
-// printConnectInfo 打印手机连接信息。
+func findServerBinary() string {
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candidates := []string{
+			filepath.Join(dir, "mobilecoding"),
+			filepath.Join(dir, "mobilecoding.exe"),
+			filepath.Join(dir, "..", "dist", "mobilecoding"),
+			filepath.Join(dir, "..", "dist", "mobilecoding.exe"),
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				return c
+			}
+		}
+	}
+	for _, name := range []string{"mobilecoding", "mobilecoding.exe"} {
+		if _, err := exec.LookPath(name); err == nil {
+			return name
+		}
+	}
+	return ""
+}
+
 func printConnectInfo(session *Session) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  ╔══════════════════════════════════════╗\n")

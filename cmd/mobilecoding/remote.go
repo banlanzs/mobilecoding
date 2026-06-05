@@ -31,13 +31,40 @@ func runRemote(session *Session) SwitchSignal {
 	select {
 	case <-userSwitch:
 		fmt.Fprintf(os.Stderr, "\n\033[33m⟳ 切回本地模式...\033[0m\n")
+		// 从 server 获取最新的 resume ID
+		if id, err := fetchResumeID(session.ServerAddr); err == nil && id != "" {
+			session.ResumeID = id
+		}
 		return SwitchToLocal
 	case <-clientDisconnected:
 		fmt.Fprintf(os.Stderr, "\n\033[32m⟳ 手机已断开，切回本地模式\033[0m\n")
+		if id, err := fetchResumeID(session.ServerAddr); err == nil && id != "" {
+			session.ResumeID = id
+		}
 		return SwitchToLocal
 	case sig := <-session.switchCh:
 		return sig
 	}
+}
+
+// fetchResumeID 从 server 获取当前 Claude 会话的 resume session ID。
+func fetchResumeID(addr string) (string, error) {
+	client := &http.Client{Timeout: 2 * time.Second}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client.Transport = transport
+
+	resp, err := client.Get(fmt.Sprintf("https://%s/api/v1/session-id", addr))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var data struct {
+		ResumeSessionID string `json:"resumeSessionId"`
+	}
+	json.NewDecoder(resp.Body).Decode(&data)
+	return data.ResumeSessionID, nil
 }
 
 // pollClientDisconnect 轮询 server 检测客户端是否断开。

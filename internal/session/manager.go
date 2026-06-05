@@ -161,3 +161,18 @@ func (m *Manager) SessionID() string {
 	defer m.mu.Unlock()
 	return m.sid
 }
+
+// ResumeSessionID 返回当前活跃 runner 的 Claude resume session ID。
+// 用于跨会话恢复（Local/Remote 模式切换）。
+func (m *Manager) ResumeSessionID() string {
+	m.mu.Lock()
+	run := m.active
+	m.mu.Unlock()
+	if run == nil {
+		return ""
+	}
+	if p, ok := run.(engine.ResumeSessionIDProvider); ok {
+		return p.GetResumeSessionID()
+	}
+	return ""
+}

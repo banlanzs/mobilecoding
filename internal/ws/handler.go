@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/hook"
@@ -13,10 +14,28 @@ import (
 )
 
 type Handler struct {
-	hub          *Hub
-	mgr          *session.Manager
-	logger       *logx.Logger
-	hookRegistry *hook.Registry // 可选：用于 permission.respond
+	hub              *Hub
+	mgr              *session.Manager
+	logger           *logx.Logger
+	hookRegistry     *hook.Registry // 可选：用于 permission.respond
+	mu               sync.Mutex
+	pendingResumeID  string // 待使用的 Claude resume session ID
+}
+
+// SetPendingResumeID 设置待使用的 resume session ID。
+// 下次 session.start 时会自动传递给 ClaudeRunner。
+func (h *Handler) SetPendingResumeID(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.pendingResumeID = id
+}
+
+func (h *Handler) consumePendingResumeID() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	id := h.pendingResumeID
+	h.pendingResumeID = ""
+	return id
 }
 
 func NewHandler(hub *Hub, mgr *session.Manager, logger *logx.Logger) *Handler {
@@ -149,39 +168,42 @@ func (h *Handler) dispatch(ctx context.Context, env Envelope) (*Envelope, any) {
 
 func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any) {
 	var p struct {
-		Command string   `json:"command"`
-		Args    []string `json:"args"`
-		CWD     string   `json:"cwd"`
+		Command         string   `json:"command"`
+		Args            []string `json:"args"`
+		CWD             string   `json:"cwd"`
+		ResumeSessionID string   `json:"resumeSessionId"`
 	}
 	if err := json.Unmarshal(env.Params, &p); err != nil {
 		return newErrorRespPtr(env.ID, protocol.ErrProtocolError, "invalid params"), nil
 	}
 
-	h.logger.Info("session", "starting: command=%s args=%v cwd=%s", p.Command, p.Args, p.CWD)
+	// 如果请求中没有 resume ID，检查是否有待使用的 pending resume ID（mc CLI 设置的）
+	if p.ResumeSessionID == "" {
+		p.ResumeSessionID = h.consumePendingResumeID()
+	}
 
-	run, err := engine.NewRunner(p.Command, engine.ExecRequest{
+	h.logger.Info("session", "starting: command=%s args=%v cwd=%s resumeId=%s", p.Command, p.Args, p.CWD, p.ResumeSessionID)
+
+	req := engine.ExecRequest{
 		Command:         p.Command,
 		Args:            p.Args,
 		CWD:             p.CWD,
 		VisibleTerminal: false,
-	})
+		ResumeSessionID: p.ResumeSessionID,
+	}
+	run, err := engine.NewRunner(p.Command, req)
 	if err != nil {
 		h.logger.Error("session", "new runner failed: command=%s err=%v", p.Command, err)
 		return newErrorRespPtr(env.ID, protocol.ErrEngineFailure, err.Error()), nil
 	}
-	sid, err := h.mgr.Start(ctx, engine.ExecRequest{
-		Command:         p.Command,
-		Args:            p.Args,
-		CWD:             p.CWD,
-		VisibleTerminal: false,
-	}, run)
+	sid, err := h.mgr.Start(ctx, req, run)
 	if err != nil {
 		h.logger.Error("session", "start failed: command=%s err=%v", p.Command, err)
 		return newErrorRespPtr(env.ID, protocol.ErrConflict, err.Error()), nil
 	}
 	result, _ := json.Marshal(map[string]string{"sessionId": sid})
 	ok := true
-	h.logger.Info("session", "started: command=%s sessionId=%s", p.Command, sid)
+	h.logger.Info("session", "started: command=%s sessionId=%s resumeId=%s", p.Command, sid, p.ResumeSessionID)
 	return &Envelope{Type: "resp", ID: env.ID, OK: &ok, Result: result}, nil
 }
 

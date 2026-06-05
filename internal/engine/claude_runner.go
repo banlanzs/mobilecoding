@@ -59,11 +59,22 @@ func (r *ClaudeRunner) HasActiveTurn() bool {
 	return r.started && r.cmd != nil && r.cmd.Process != nil
 }
 
+// GetResumeSessionID 返回当前捕获的 Claude session_id（用于 --resume）。
+func (r *ClaudeRunner) GetResumeSessionID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.resumeSessionID
+}
+
 func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 	if req.Command == "" {
 		return errors.New("command is required")
 	}
 	r.req = req
+	// 支持跨会话恢复：从请求中设置 resume session ID
+	if req.ResumeSessionID != "" {
+		r.resumeSessionID = req.ResumeSessionID
+	}
 	r.events <- Event{Kind: EventLifecycle, Message: "ready: claude (waiting for first message)"}
 	return nil
 }

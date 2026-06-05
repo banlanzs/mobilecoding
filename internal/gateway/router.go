@@ -97,6 +97,8 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/hook-status", hookStatusHandler())
 		r.Get("/messages", messagesHandler(deps.MsgStore))
 		r.Get("/clients", clientsHandler(deps.WS))
+		r.Get("/session-id", sessionIDHandler(deps.Session))
+		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
@@ -391,6 +393,45 @@ func clientsHandler(wsHandler *ws.Handler) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]int{"subscribers": count})
+	}
+}
+
+// sessionIDHandler 返回当前活跃会话的 Claude resume session ID。
+// 供 mc CLI 在模式切换时获取 --resume 参数。
+func sessionIDHandler(mgr *session.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if mgr == nil {
+			http.Error(w, "session manager not available", http.StatusServiceUnavailable)
+			return
+		}
+		resumeID := mgr.ResumeSessionID()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"sessionId":        mgr.SessionID(),
+			"resumeSessionId":  resumeID,
+		})
+	}
+}
+
+// resumeHandler 接收 mc CLI 发来的 resume session ID，停止当前会话并存储 resume ID。
+// 手机端下次调用 session.start 时会自动使用此 resume ID 继续会话。
+func resumeHandler(mgr *session.Manager, wsHandler *ws.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var p struct {
+			ResumeSessionID string `json:"resumeSessionId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil || p.ResumeSessionID == "" {
+			http.Error(w, "resumeSessionId required", http.StatusBadRequest)
+			return
+		}
+		// 停止当前会话（如果有）
+		if mgr.SessionID() != "" {
+			mgr.Stop()
+		}
+		// 存储 resume ID，供下次 session.start 使用
+		wsHandler.SetPendingResumeID(p.ResumeSessionID)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "resumeSessionId": p.ResumeSessionID})
 	}
 }
 
