@@ -50,11 +50,17 @@ func runLocal(session *Session) SwitchSignal {
 		return ExitLoop
 	}
 
-	// 4. 接收 server 事件并显示
+	// 4. 显示就绪提示
+	fmt.Fprintf(os.Stderr, "\n\033[36m╭─ mobilecoding ─────────────────────────╮\033[0m\n")
+	fmt.Fprintf(os.Stderr, "\033[36m│\033[0m 输入消息后按 Enter 发送，Ctrl+C 退出    \033[36m│\033[0m\n")
+	fmt.Fprintf(os.Stderr, "\033[36m╰─────────────────────────────────────────╯\033[0m\n\n")
+	fmt.Fprintf(os.Stderr, "\033[32m❯ \033[0m")
+
+	// 5. 接收 server 事件并显示
 	eventsDone := make(chan struct{})
 	go receiveEvents(conn, eventsDone)
 
-	// 5. 读取终端输入，发送给 server
+	// 6. 读取终端输入，发送给 server
 	inputDone := make(chan struct{})
 	go forwardInput(conn, inputDone)
 
@@ -101,10 +107,15 @@ func forwardInput(conn *websocket.Conn, done chan<- struct{}) {
 	scanner.Buffer(make([]byte, 256*1024), 256*1024)
 	for scanner.Scan() {
 		text := scanner.Text()
+		if text == "" {
+			fmt.Fprintf(os.Stderr, "\033[32m❯ \033[0m")
+			continue
+		}
 		if err := sendRPC(conn, "session.input", map[string]any{"text": text}); err != nil {
 			fmt.Fprintf(os.Stderr, "\033[31m发送失败: %v\033[0m\n", err)
 			return
 		}
+		fmt.Fprintf(os.Stderr, "\033[90m⏳ 等待响应...\033[0m\n")
 	}
 }
 
@@ -166,7 +177,8 @@ func handleEvent(raw json.RawMessage) {
 	case "bash_start":
 		fmt.Fprintf(os.Stderr, "\033[33m❯ %s\033[0m\n", ev.ToolName)
 	case "turn_end":
-		fmt.Printf("\n")
+		fmt.Printf("\n\n")
+		fmt.Fprintf(os.Stderr, "\033[32m❯ \033[0m")
 	case "permission_request", "permission_ask":
 		fmt.Fprintf(os.Stderr, "\n\033[33m⚠ 权限请求: %s — %s\033[0m\n", ev.ToolName, ev.Message)
 	case "lifecycle":
