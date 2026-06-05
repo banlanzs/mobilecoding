@@ -29,7 +29,7 @@ Thumbs.db
 *.test
 *.out
 coverage.out
-mobilecoding
+/mobilecoding
 
 #cli
 .claude/
