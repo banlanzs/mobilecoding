@@ -37,7 +37,7 @@ export function InputBar() {
 
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || !state.sessionId) return;
+    if (!trimmed) return;
 
     setText('');
     setSending(true);
@@ -79,9 +79,11 @@ export function InputBar() {
     adjustHeight();
   };
 
-  const placeholder = state.sessionId
-    ? (isActive ? 'AI 响应中… (Enter 中止)' : '输入消息… (Enter 发送, Shift+Enter 换行)')
-    : '先点击 Start 启动会话';
+  const placeholder = state.status !== 'connected'
+    ? '未连接...'
+    : isActive
+    ? 'AI 响应中… (Enter 中止)'
+    : '输入消息… (Enter 发送, Shift+Enter 换行)';
 
   return (
     <div className="input-bar" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px))' }}>
@@ -92,36 +94,34 @@ export function InputBar() {
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         rows={1}
-        disabled={!state.sessionId || sending}
+        disabled={state.status !== 'connected' || sending}
         aria-label="输入消息"
       />
-      {state.sessionId ? (
-        isStopping ? (
-          <button className="btn-stop-action stopping" disabled aria-label="停止中…">
-            …
-          </button>
-        ) : isActive ? (
-          <button
-            className="btn-stop-action"
-            onClick={handleAbort}
-            aria-label="中止请求"
-            title="中止当前 AI 请求"
-          >
-            ■
-          </button>
-        ) : (
-          <button
-            className="btn-send"
-            onClick={handleSend}
-            disabled={!text.trim() || sending}
-            aria-label="发送"
-          >
-            {sending ? '…' : '→'}
-          </button>
-        )
-      ) : (
+      {state.status !== 'connected' ? (
         <button className="btn-send" disabled aria-label="发送">
           →
+        </button>
+      ) : isStopping ? (
+        <button className="btn-stop-action stopping" disabled aria-label="停止中…">
+          …
+        </button>
+      ) : isActive ? (
+        <button
+          className="btn-stop-action"
+          onClick={handleAbort}
+          aria-label="中止请求"
+          title="中止当前 AI 请求"
+        >
+          ■
+        </button>
+      ) : (
+        <button
+          className="btn-send"
+          onClick={handleSend}
+          disabled={!text.trim() || sending}
+          aria-label="发送"
+        >
+          {sending ? '…' : '→'}
         </button>
       )}
     </div>

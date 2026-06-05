@@ -158,7 +158,16 @@ export function SessionBar() {
     );
   }
 
-  // 无会话：显示完整选择界面
+  // 无会话但已连接：遥控器模式（被动监控终端 Claude）
+  if (state.status === 'connected') {
+    return (
+      <div className="session-bar">
+        <span className="session-active">🔗 遥控器模式 — 终端 Claude 已连接</span>
+      </div>
+    );
+  }
+
+  // 无会话且未连接：显示完整选择界面
   return (
     <div className="session-bar">
       {error && <div className="session-error">{error}</div>}
@@ -214,7 +223,7 @@ export function SessionBar() {
         <button
           className="btn btn-primary"
           onClick={handleStart}
-          disabled={loading || state.status !== 'connected'}
+          disabled={loading}
         >
           {loading ? '启动中…' : 'Start'}
         </button>

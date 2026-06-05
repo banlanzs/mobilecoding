@@ -507,8 +507,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const sendInput = useCallback(
     async (text: string): Promise<void> => {
-      const sid = state.sessionId;
-      if (!sid) throw new Error('no active session');
+      const sid = state.sessionId || 'remote_control';
       dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
 
       if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -517,7 +516,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
         try {
           await client.sendInput(text);
         } catch (err) {
-          // 会话已死：自动重置状态
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes('no active runner') || msg.includes('engine_failure') || msg.includes('context canceled')) {
             dispatch({ type: 'SESSION_STOPPED' });
