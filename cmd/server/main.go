@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -247,41 +246,22 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 }
 
 // installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
-// 同时扫描同目录下的其他 settings*.json（如 settings.axonhub.json）一并注入，
-// 因为用户可能通过 --settings 参数使用不同的配置文件。
+// settings.json 是基础配置，--settings xxx.json 会合并而非替换，所以只需注入基础文件。
 func installClaudeHook(cfg config.Config, hookURL string, logger *logx.Logger) error {
-	install := func(path string) {
-		inj := hook.NewSettingsInjector(path)
-		if err := inj.Install(hook.HookConfig{
-			URL:     hookURL,
-			Token:   cfg.AuthToken,
-			Timeout: 300,
-		}); err != nil {
-			logger.Warn("startup", "hook install skipped for %s: %v", path, err)
-			return
-		}
-		logger.Info("startup", "Claude hook installed: path=%s url=%s", path, hookURL)
-	}
-
-	defaultPath, err := hook.DefaultSettingsPath()
+	path, err := hook.DefaultSettingsPath()
 	if err != nil {
 		return err
 	}
-	install(defaultPath)
-
-	// 扫描同目录下的其他 settings*.json 并安装
-	dir := filepath.Dir(defaultPath)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil // 目录不存在则跳过
+	inj := hook.NewSettingsInjector(path)
+	if err := inj.Install(hook.HookConfig{
+		URL:     hookURL,
+		Token:   cfg.AuthToken,
+		Timeout: 300,
+	}); err != nil {
+		logger.Warn("startup", "hook install skipped: %v", err)
+		return nil
 	}
-	for _, e := range entries {
-		name := e.Name()
-		if name == "settings.json" || !strings.HasPrefix(name, "settings") || !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		install(filepath.Join(dir, name))
-	}
+	logger.Info("startup", "Claude hook installed: path=%s url=%s", path, hookURL)
 	return nil
 }
 
