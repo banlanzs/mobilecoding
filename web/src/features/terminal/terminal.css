@@ -887,6 +887,12 @@
   animation: pulse 2s infinite;
 }
 
+.input-bar .btn-stop-action.stopping {
+  opacity: 0.5;
+  cursor: not-allowed;
+  animation: none;
+}
+
 /* 空状态 */
 .empty-state {
   display: flex;

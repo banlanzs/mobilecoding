@@ -67,6 +67,7 @@ export interface ChatState {
   connectionMode: 'direct' | 'relay';
   thinking: boolean;
   turnActive: boolean; // 整个 turn 是否在执行（用于控制"中止/发送"按钮）
+  stopping: boolean; // 正在停止会话，阻止事件重新激活 turn
   agentState: AgentStateInfo;
 }
 
@@ -79,6 +80,7 @@ type Action =
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
   | { type: 'PERMISSION_ANSWERED'; allowed: boolean }
   | { type: 'ABORT_TURN' }
+  | { type: 'STOPPING' }
   | { type: 'ERROR'; error: string }
   | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
 
@@ -87,7 +89,7 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'STATUS_CHANGED':
       // 连接断开：把 turnActive 设回 false（turn 中断，按钮切回"发送"）
       if (action.status === 'closed' || action.status === 'reconnecting') {
-        return { ...state, status: action.status, turnActive: false, thinking: false };
+        return { ...state, status: action.status, turnActive: false, thinking: false, stopping: false };
       }
       return { ...state, status: action.status, lastError: null };
     case 'SESSION_STARTED': {
@@ -103,6 +105,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         lastError: null,
         thinking: false,
         turnActive: false,
+        stopping: false,
         permissionPrompt: null,
         permissionRequestId: null,
         agentState: { status: 'idle', since: Date.now() },
@@ -117,6 +120,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         permissionRequestId: null,
         thinking: false,
         turnActive: false,
+        stopping: false,
         agentState: { status: 'idle', since: Date.now() },
       };
     case 'RUNTIME_LOADED':
@@ -203,7 +207,9 @@ function reducer(state: ChatState, action: Action): ChatState {
         } else {
           next.permissionRequestId = null;
         }
-        next.turnActive = true; // 等待用户处理期间视为活动
+        if (!state.stopping) {
+          next.turnActive = true; // 等待用户处理期间视为活动
+        }
         console.log('[DEBUG] permissionPrompt set:', next.permissionPrompt);
       }
 
@@ -280,6 +286,8 @@ function reducer(state: ChatState, action: Action): ChatState {
     }
     case 'ABORT_TURN':
       return { ...state, thinking: false, turnActive: false };
+    case 'STOPPING':
+      return { ...state, stopping: true, thinking: false, turnActive: false };
     case 'ERROR':
       // 错误时不重置 turnActive（可能只是网络抖动，会话还在）
       return { ...state, lastError: action.error };
@@ -304,6 +312,7 @@ const initialState: ChatState = {
   connectionMode: 'direct',
   thinking: false,
   turnActive: false,
+  stopping: false,
   agentState: { status: 'idle', since: Date.now() },
 };
 
@@ -485,6 +494,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   );
 
   const sendStop = useCallback(async (): Promise<void> => {
+    dispatch({ type: 'STOPPING' }); // 立即锁定 UI，阻止事件重新激活 turn
     if (state.connectionMode === 'relay') {
       disconnectRelay();
     } else {

@@ -12,6 +12,7 @@ export function InputBar() {
   // turnActive 由 ChatContext 在 USER_MESSAGE_SENT 时打开，在 turn_end / abort / SESSION_STOPPED 时关闭。
   // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
+  const isStopping = state.stopping;
   console.log('[DEBUG] InputBar render:', { turnActive: state.turnActive, thinking: state.thinking, agentStatus: state.agentState.status, isActive, hasSession: !!state.sessionId });
 
   // 键盘弹出适配
@@ -95,7 +96,11 @@ export function InputBar() {
         aria-label="输入消息"
       />
       {state.sessionId ? (
-        isActive ? (
+        isStopping ? (
+          <button className="btn-stop-action stopping" disabled aria-label="停止中…">
+            …
+          </button>
+        ) : isActive ? (
           <button
             className="btn-stop-action"
             onClick={handleAbort}
