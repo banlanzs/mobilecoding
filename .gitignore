@@ -31,11 +31,3 @@ Thumbs.db
 coverage.out
 mobilecoding
 
-# Debug/diagnosis files
-DEBUG-PERMISSION.md
-DIAGNOSIS-REPORT.md
-DIAGNOSIS-SUMMARY.md
-FIX-STEPS.md
-TEST-FIXES.md
-claude-settings-fix.json
-debug-events.md
