@@ -77,7 +77,7 @@ type Action =
   | { type: 'SESSION_STOPPED' }
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
-  | { type: 'PERMISSION_ANSWERED' }
+  | { type: 'PERMISSION_ANSWERED'; allowed: boolean }
   | { type: 'ABORT_TURN' }
   | { type: 'ERROR'; error: string }
   | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
@@ -266,8 +266,18 @@ function reducer(state: ChatState, action: Action): ChatState {
       saveMessages(messages);
       return { ...state, messages, thinking: true, turnActive: true };
     }
-    case 'PERMISSION_ANSWERED':
-      return { ...state, permissionPrompt: null, permissionRequestId: null };
+    case 'PERMISSION_ANSWERED': {
+      // 在消息列表中找到最近的权限事件，标记为已解决
+      const msgs = [...state.messages];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i] as any;
+        if (m.type === 'permission_request' || m.type === 'permission_ask') {
+          msgs[i] = { ...m, resolved: action.allowed ? 'allowed' : 'denied' };
+          break;
+        }
+      }
+      return { ...state, messages: msgs, permissionPrompt: null, permissionRequestId: null };
+    }
     case 'ABORT_TURN':
       return { ...state, thinking: false, turnActive: false };
     case 'ERROR':
@@ -484,7 +494,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [client, state.connectionMode, disconnectRelay]);
 
   const dismissPermission = useCallback(() => {
-    dispatch({ type: 'PERMISSION_ANSWERED' });
+    dispatch({ type: 'PERMISSION_ANSWERED', allowed: false });
   }, []);
 
   const abortTurn = useCallback(async (): Promise<void> => {
@@ -498,7 +508,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const answerPermission = useCallback(
     async (allow: boolean, _toolName: string, requestId?: string): Promise<void> => {
-      dispatch({ type: 'PERMISSION_ANSWERED' });
+      dispatch({ type: 'PERMISSION_ANSWERED', allowed: allow });
       // 没有 requestId 说明是 tool_result 中检测出的伪权限请求（Claude 已超时拒绝）
       // stdout 写入已无效，仅关闭弹窗
       if (!requestId) return;

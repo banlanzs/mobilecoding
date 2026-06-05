@@ -37,6 +37,7 @@ func SplitArgs(raw string) []string {
 // Config 汇总运行时所有可配置项。字段语义见 spec §8.5。
 type Config struct {
 	Port          string
+	IP            string // 本机 IP 覆盖；空值表示自动检测
 	AuthToken     string
 	Workspace     string
 	MTLS          string // none | optional | required
@@ -94,6 +95,7 @@ func Load() (Config, error) {
 	env := FromEnv()
 	c := Config{
 		Port:        env.Port,
+		IP:          env.IP,
 		AuthToken:   env.AuthToken,
 		Workspace:   env.Workspace,
 		MTLS:        env.MTLS,

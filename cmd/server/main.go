@@ -45,7 +45,7 @@ func main() {
 		return
 	}
 	if flags.showHelp {
-		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)")
+		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -ip                 local IP for cert & QR code (auto-detect if omitted)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)")
 		return
 	}
 
@@ -80,7 +80,21 @@ func main() {
 	}
 	certPath := filepath.Join(caDir, "server.crt")
 	keyPath := filepath.Join(caDir, "server.key")
-	localIP := auth.GetLocalIP()
+
+	// IP 选择：手动指定 > 自动检测
+	localIP := cfg.IP
+	if localIP == "" {
+		localIP = auth.GetLocalIP()
+	}
+	// 显示所有可用 IP
+	allIPs := auth.GetAllLocalIPs()
+	if len(allIPs) > 1 {
+		logger.Info("startup", "detected local IPs: %v (using %s)", allIPs, localIP)
+	}
+	if cfg.IP != "" {
+		logger.Info("startup", "using manually specified IP: %s", cfg.IP)
+	}
+
 	if err := auth.LoadOrCreateServerCert(ca, certPath, keyPath, localIP, "localhost"); err != nil {
 		logger.Error("startup", "load server cert: %v", err)
 		os.Exit(1)
@@ -119,6 +133,7 @@ func buildConfig(f serverFlags) (config.Config, error) {
 	env := config.FromEnv()
 	c := config.Config{
 		Port:        firstNonEmpty(f.port, env.Port, "8443"),
+		IP:          firstNonEmpty(f.ip, env.IP),
 		AuthToken:   firstNonEmpty(f.authToken, env.AuthToken),
 		Workspace:   firstNonEmpty(f.workspace, env.Workspace),
 		MTLS:        firstNonEmpty(f.mtls, env.MTLS),

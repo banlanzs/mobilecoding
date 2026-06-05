@@ -5,6 +5,7 @@ import { AgentStatusBar } from './AgentStatusBar';
 import { SessionBar } from './SessionBar';
 import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
+import { PermissionBanner } from './PermissionBanner';
 import './terminal.css';
 
 export function TerminalPage() {
@@ -41,6 +42,7 @@ export function TerminalPage() {
       )}
       <MessageList />
       <InputBar />
+      <PermissionBanner />
     </div>
   );
 }

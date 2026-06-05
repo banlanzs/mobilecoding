@@ -3,8 +3,9 @@ import { useRef, useEffect, useState } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 import { EventCard } from './EventCard';
 
+
 export function MessageList() {
-  const { state, answerPermission } = useChat();
+  const { state } = useChat();
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const stuckAtBottom = useRef(true);
@@ -58,36 +59,6 @@ export function MessageList() {
 
   return (
     <div className="message-list" ref={listRef}>
-      {state.permissionPrompt && (
-        <div className="permission-banner">
-          <div className="permission-banner-header">⚠ 权限请求</div>
-          <div className="permission-banner-msg">
-            {state.permissionPrompt.message || '请求执行工具操作'}
-          </div>
-          <div className="permission-banner-actions">
-            <button
-              className="btn-allow"
-              onClick={() => answerPermission(
-                true,
-                state.permissionPrompt!.toolName,
-                state.permissionRequestId || undefined,
-              )}
-            >
-              Allow
-            </button>
-            <button
-              className="btn-deny"
-              onClick={() => answerPermission(
-                false,
-                state.permissionPrompt!.toolName,
-                state.permissionRequestId || undefined,
-              )}
-            >
-              Deny
-            </button>
-          </div>
-        </div>
-      )}
       {state.messages.map((msg, i) => (
         <EventCard key={(msg as any).messageId || `m${i}`} event={msg} />
       ))}

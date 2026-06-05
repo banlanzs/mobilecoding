@@ -3,7 +3,6 @@ import type { DisplayMessage, UserMessage } from '../../core/ws/types';
 import { TextCard } from './cards/TextCard';
 import { ToolUseCard } from './cards/ToolUseCard';
 import { ToolResultCard } from './cards/ToolResultCard';
-import { PermissionCard } from './cards/PermissionCard';
 import { PlanModeCard } from './cards/PlanModeCard';
 import { ContextWindowCard } from './cards/ContextWindowCard';
 import { LifecycleCard } from './cards/LifecycleCard';
@@ -37,7 +36,7 @@ export function EventCard({ event }: { event: DisplayMessage }) {
       return <ToolResultCard event={event} />;
     case 'permission_request':
     case 'permission_ask':
-      return <PermissionCard event={event} />;
+      return <PermissionStatus event={event} />;
     case 'plan_mode':
       return <PlanModeCard event={event} />;
     case 'context_window':
@@ -68,4 +67,23 @@ function formatTime(iso: string): string {
   } catch {
     return '';
   }
+}
+
+// 内联权限状态：仅显示工具名 + 结果状态，不显示交互按钮（交互由底部 banner 处理）
+function PermissionStatus({ event }: { event: DisplayMessage }) {
+  const ev = event as any;
+  const resolved = ev.resolved as 'allowed' | 'denied' | undefined;
+  const badge = resolved === 'allowed'
+    ? <span className="permission-status-badge badge-allowed">✓ 已允许</span>
+    : resolved === 'denied'
+    ? <span className="permission-status-badge badge-denied">✗ 已拒绝</span>
+    : <span className="permission-status-badge">等待授权</span>;
+  return (
+    <article className="card card-permission-status">
+      <span className="permission-status-icon">🔐</span>
+      <span className="permission-status-tool">{ev.toolName}</span>
+      <span className="permission-status-msg">{ev.message || '请求执行工具操作'}</span>
+      {badge}
+    </article>
+  );
 }

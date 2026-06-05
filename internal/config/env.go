@@ -5,6 +5,7 @@ import "os"
 // EnvOverrides 记录从环境变量派生的覆盖项。
 type EnvOverrides struct {
 	Port        string
+	IP          string
 	AuthToken   string
 	Workspace   string
 	MTLS        string
@@ -19,6 +20,7 @@ type EnvOverrides struct {
 func FromEnv() EnvOverrides {
 	return EnvOverrides{
 		Port:        firstEnv("MOBILECODING_PORT", "MYTOOL_PORT"),
+		IP:          firstEnv("MOBILECODING_IP", "MYTOOL_IP"),
 		AuthToken:   firstEnv("MOBILECODING_AUTH_TOKEN", "MYTOOL_AUTH_TOKEN"),
 		Workspace:   firstEnv("MOBILECODING_WORKSPACE", "MYTOOL_WORKSPACE"),
 		MTLS:        firstEnv("MOBILECODING_MTLS", "MYTOOL_MTLS"),

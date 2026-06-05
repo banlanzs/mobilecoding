@@ -4,6 +4,7 @@ import "flag"
 
 type serverFlags struct {
 	port        string
+	ip          string
 	workspace   string
 	authToken   string
 	mtls        string
@@ -18,6 +19,7 @@ func parseServerFlags(args []string) (serverFlags, error) {
 	f := serverFlags{}
 	fs := flag.NewFlagSet("mobilecoding", flag.ContinueOnError)
 	fs.StringVar(&f.port, "port", "", "listen port (overrides MOBILECODING_PORT)")
+	fs.StringVar(&f.ip, "ip", "", "local IP for cert & QR code (overrides MOBILECODING_IP)")
 	fs.StringVar(&f.workspace, "workspace", "", "workspace root (overrides MOBILECODING_WORKSPACE)")
 	fs.StringVar(&f.authToken, "auth-token", "", "auth token (overrides MOBILECODING_AUTH_TOKEN)")
 	fs.StringVar(&f.mtls, "mtls", "", "mtls mode: none|optional|required")
