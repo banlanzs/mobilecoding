@@ -159,7 +159,7 @@ export function SessionBar() {
   }
 
   // 无会话但已连接：遥控器模式（被动监控终端 Claude）
-  if (state.status === 'connected') {
+  if (state.status === 'connected' && state.runtime.launchMode === 'remote-control') {
     return (
       <div className="session-bar">
         <span className="session-active">🔗 遥控器模式 — 终端 Claude 已连接</span>

@@ -13,6 +13,7 @@ type EnvOverrides struct {
 	DefaultCmd  string
 	DefaultArgs string
 	Models      string // 逗号分隔的模型列表: label1:value1,label2:value2
+	LaunchMode  string // managed | remote-control
 }
 
 // FromEnv 从环境变量读取覆盖项。空值表示未设置。
@@ -28,6 +29,7 @@ func FromEnv() EnvOverrides {
 		DefaultCmd:  firstEnv("MOBILECODING_DEFAULT_COMMAND", "MYTOOL_DEFAULT_COMMAND"),
 		DefaultArgs: firstEnv("MOBILECODING_DEFAULT_ARGS", "MYTOOL_DEFAULT_ARGS"),
 		Models:      firstEnv("MOBILECODING_MODELS", "MYTOOL_MODELS"),
+		LaunchMode:  firstEnv("MOBILECODING_LAUNCH_MODE", "MYTOOL_LAUNCH_MODE"),
 	}
 }
 

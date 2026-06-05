@@ -73,7 +73,7 @@ func startServer(port string) *exec.Cmd {
 		fmt.Fprintf(os.Stderr, "找不到 mobilecoding 可执行文件，请先运行 make build\n")
 		return nil
 	}
-	cmd := exec.Command(serverBin, "-port", port)
+	cmd := exec.Command(serverBin, "-port", port, "-launch-mode", "remote-control")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {

@@ -33,7 +33,13 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	h := NewRouter(Dependencies{FS: newTestSPA(), Version: "0.1.0"}, "test-token")
+	h := NewRouter(Dependencies{
+		FS:          newTestSPA(),
+		Version:     "0.1.0",
+		DefaultCmd:  "claude",
+		DefaultArgs: []string{"--model", "sonnet"},
+		LaunchMode:  "remote-control",
+	}, "test-token")
 	req := httptest.NewRequest("GET", "/version", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -47,6 +53,13 @@ func TestVersion(t *testing.T) {
 	}
 	if got["runtime"] == nil {
 		t.Errorf("runtime should be present in /version response")
+	}
+	runtime, ok := got["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("runtime should be an object, got %T", got["runtime"])
+	}
+	if runtime["launchMode"] != "remote-control" {
+		t.Errorf("runtime.launchMode = %q, want remote-control", runtime["launchMode"])
 	}
 }
 

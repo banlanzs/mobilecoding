@@ -234,6 +234,7 @@ export type DisplayMessage = AppEvent | UserMessage;
 export interface RuntimeConfig {
   defaultCommand: string;
   defaultArgs: string[];
+  launchMode?: 'managed' | 'remote-control';
   cwd?: string;
 }
 

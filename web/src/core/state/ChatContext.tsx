@@ -326,7 +326,7 @@ const initialState: ChatState = {
   permissionPrompt: null,
   permissionRequestId: null,
   lastError: null,
-  runtime: { defaultCommand: '', defaultArgs: [], cwd: '' },
+  runtime: { defaultCommand: '', defaultArgs: [], launchMode: 'managed', cwd: '' },
   connectionMode: 'direct',
   thinking: false,
   turnActive: false,

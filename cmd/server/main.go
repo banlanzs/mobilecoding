@@ -45,7 +45,7 @@ func main() {
 		return
 	}
 	if flags.showHelp {
-		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -ip                 local IP for cert & QR code (auto-detect if omitted)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)")
+		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -ip                 local IP for cert & QR code (auto-detect if omitted)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)\n  -launch-mode        managed|remote-control")
 		return
 	}
 
@@ -121,7 +121,6 @@ func main() {
 		logger.Warn("startup", "print QR code failed: %v", err)
 	}
 
-
 	// 4. Run
 	if err := run(cfg, logger, tlsCfg, ca); err != nil {
 		logger.Error("startup", "run: %v", err)
@@ -140,6 +139,7 @@ func buildConfig(f serverFlags) (config.Config, error) {
 		LogLevel:    firstNonEmpty(f.logLevel, env.LogLevel),
 		DefaultCmd:  firstNonEmpty(f.defaultCmd, env.DefaultCmd),
 		DefaultArgs: config.SplitArgs(os.ExpandEnv(firstNonEmpty(f.defaultArgs, env.DefaultArgs))),
+		LaunchMode:  firstNonEmpty(f.launchMode, env.LaunchMode),
 	}.WithDefaults()
 
 	if c.AuthToken == "" {
@@ -149,6 +149,9 @@ func buildConfig(f serverFlags) (config.Config, error) {
 		}
 		c.AuthToken = tok
 		fmt.Fprintf(os.Stderr, "==> Generated new auth token (MVP 1: in-memory only): %s\n", tok)
+	}
+	if err := c.Validate(); err != nil {
+		return c, err
 	}
 
 	if err := os.MkdirAll(c.Workspace, 0o755); err != nil {
@@ -253,6 +256,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		CA:          ca,
 		DefaultCmd:  cfg.DefaultCmd,
 		DefaultArgs: cfg.DefaultArgs,
+		LaunchMode:  cfg.LaunchMode,
 		Models:      cfg.Models,
 		Relay:       relayServer,
 		MsgStore:    msgStore,

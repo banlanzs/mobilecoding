@@ -30,8 +30,9 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
-	Models      string           // 逗号分隔: label:value,...
-	Relay       *relay.Server    // Relay 中继服务器
+	LaunchMode  string
+	Models      string              // 逗号分隔: label:value,...
+	Relay       *relay.Server       // Relay 中继服务器
 	MsgStore    *store.MessageStore // 消息持久化存储（可选）
 	// HookHandler 已移至独立 HTTP 监听器（startHookListener），不通过主 router 提供。
 }
@@ -66,6 +67,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 			"runtime": map[string]any{
 				"defaultCommand": deps.DefaultCmd,
 				"defaultArgs":    deps.DefaultArgs,
+				"launchMode":     deps.LaunchMode,
 				"cwd":            cwd,
 			},
 		})
@@ -214,6 +216,7 @@ func min(a, b int) int {
 	}
 	return b
 }
+
 // 返回格式：[{ name: "axonhub", path: "C:/Users/xxx/.claude/settings.axonhub.json" }, ...]
 func claudeSettingsHandler() http.HandlerFunc {
 	type settingEntry struct {
@@ -450,8 +453,8 @@ func sessionIDHandler(mgr *session.Manager) http.HandlerFunc {
 		resumeID := mgr.ResumeSessionID()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"sessionId":        mgr.SessionID(),
-			"resumeSessionId":  resumeID,
+			"sessionId":       mgr.SessionID(),
+			"resumeSessionId": resumeID,
 		})
 	}
 }
