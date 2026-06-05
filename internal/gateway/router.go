@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
 	"github.com/banlanzs/mobilecoding/internal/store"
@@ -94,6 +95,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/memory", memoryListHandler(deps.StoreDir))
 		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
+		r.Get("/agents", agentsHandler())
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
 		r.Get("/messages", messagesHandler(deps.MsgStore))
@@ -379,6 +381,15 @@ func messagesHandler(msgStore *store.MessageStore) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response{Messages: msgs, HasMore: hasMore})
+	}
+}
+
+// agentsHandler 返回可用 Agent 列表。
+func agentsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		agents := engine.ListAgents()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(agents)
 	}
 }
 
