@@ -1,6 +1,26 @@
-// 底部输入栏：textarea + 发送/停止合一按钮
+// 底部输入栏：快捷指令条 + textarea + 圆形发送/停止按钮
 import { useRef, useState, useEffect } from 'react';
 import { useChat } from '../../core/state/ChatContext';
+
+// 快捷指令：点击填入输入框（不直接发送，保留用户编辑/确认）
+const QUICK_CHIPS = ['/clear', 'git status', 'git diff', 'npm test'];
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+      <rect x="5" y="5" width="14" height="14" rx="2" />
+    </svg>
+  );
+}
 
 export function InputBar() {
   const { state, sendInput, abortTurn } = useChat();
@@ -13,7 +33,7 @@ export function InputBar() {
   // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
   const isStopping = state.stopping;
-  console.log('[DEBUG] InputBar render:', { turnActive: state.turnActive, thinking: state.thinking, agentStatus: state.agentState.status, isActive, hasSession: !!state.sessionId });
+  const disabled = state.status !== 'connected';
 
   // 键盘弹出适配
   useEffect(() => {
@@ -32,7 +52,7 @@ export function InputBar() {
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+    ta.style.height = Math.min(ta.scrollHeight, 96) + 'px';
   };
 
   const handleSend = async () => {
@@ -79,51 +99,68 @@ export function InputBar() {
     adjustHeight();
   };
 
-  const placeholder = state.status !== 'connected'
+  const applyChip = (value: string) => {
+    setText(value);
+    taRef.current?.focus();
+    requestAnimationFrame(adjustHeight);
+  };
+
+  const placeholder = disabled
     ? '未连接...'
     : isActive
     ? 'AI 响应中… (Enter 中止)'
     : '输入消息… (Enter 发送, Shift+Enter 换行)';
 
   return (
-    <div className="input-bar" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px))' }}>
-      <textarea
-        ref={taRef}
-        value={text}
-        onChange={onChange}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        rows={1}
-        disabled={state.status !== 'connected' || sending}
-        aria-label="输入消息"
-      />
-      {state.status !== 'connected' ? (
-        <button className="btn-send" disabled aria-label="发送">
-          →
-        </button>
-      ) : isStopping ? (
-        <button className="btn-stop-action stopping" disabled aria-label="停止中…">
-          …
-        </button>
-      ) : isActive ? (
-        <button
-          className="btn-stop-action"
-          onClick={handleAbort}
-          aria-label="中止请求"
-          title="中止当前 AI 请求"
-        >
-          ■
-        </button>
-      ) : (
-        <button
-          className="btn-send"
-          onClick={handleSend}
-          disabled={!text.trim() || sending}
-          aria-label="发送"
-        >
-          {sending ? '…' : '→'}
-        </button>
-      )}
+    <div className="input-bar" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px))' }}>
+      <div className="quick-chips">
+        {QUICK_CHIPS.map((chip) => (
+          <button key={chip} type="button" className="chip" onClick={() => applyChip(chip)}>
+            {chip}
+          </button>
+        ))}
+      </div>
+      <div className="input-row">
+        <div className="input-wrapper">
+          <textarea
+            ref={taRef}
+            value={text}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            rows={1}
+            disabled={disabled || sending}
+            aria-label="输入消息"
+          />
+        </div>
+        {disabled ? (
+          <button className="btn-send" disabled aria-label="发送">
+            <SendIcon />
+          </button>
+        ) : isStopping ? (
+          <button className="btn-stop-action stopping" disabled aria-label="停止中…">
+            …
+          </button>
+        ) : isActive ? (
+          <button
+            className="btn-stop-action"
+            onClick={handleAbort}
+            aria-label="中止请求"
+            title="中止当前 AI 请求"
+          >
+            <StopIcon />
+          </button>
+        ) : (
+          <button
+            className="btn-send"
+            onClick={handleSend}
+            disabled={!text.trim() || sending}
+            aria-label="发送"
+          >
+            <SendIcon />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

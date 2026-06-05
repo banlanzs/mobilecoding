@@ -25,7 +25,7 @@ export function ToolResultCard({ event }: { event: ToolResultEvent }) {
         <span className="card-badge">{statusIcon} result</span>
         <span className="tool-name">{event.toolName}</span>
         <span className="result-summary">{shortResult}</span>
-        <span style={{ marginLeft: 'auto', color: '#565f89', fontSize: 11 }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--mc-meta)', fontSize: 11 }}>
           {expanded ? '▼' : '▶'}
         </span>
       </header>

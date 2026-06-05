@@ -1,4 +1,4 @@
-// 会话控制栏：command + model 选择 + settings 下拉 + start/stop 按钮
+// 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
 import { useEffect, useState, useCallback } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
@@ -129,45 +129,64 @@ export function SessionBar() {
     }
   };
 
-  // Relay 模式下：只显示停止按钮
+  // 上下文进度条：仅在收到真实 context_window 事件后显示（不放假数据）
+  const ctx = state.contextWindow;
+  const ctxPct = ctx && ctx.max > 0 ? Math.min(100, Math.round((ctx.used / ctx.max) * 100)) : null;
+  const contextMeter = ctxPct !== null ? (
+    <div className="context-window">
+      <span className="context-label">上下文 {ctxPct}%</span>
+      <div className="progress-track">
+        <div className="progress-bar" style={{ width: `${ctxPct}%` }} />
+      </div>
+    </div>
+  ) : null;
+
+  // Relay 模式：指示 + 断开
   if (state.connectionMode === 'relay') {
     return (
-      <div className="session-bar relay-mode">
+      <div className="session-bar">
         {error && <div className="session-error">{error}</div>}
         <div className="relay-indicator">
           <span className="relay-dot" />
           Relay Connected
         </div>
-        <button className="btn btn-danger" onClick={handleStop}>
-          Disconnect
-        </button>
+        <div className="session-actions">
+          <button className="btn btn-danger" onClick={handleStop}>
+            Disconnect
+          </button>
+        </div>
       </div>
     );
   }
 
-  // 有活跃会话时：只显示 Stop 按钮
+  // 有活跃会话：会话信息 + 上下文进度 + Stop
   if (state.sessionId) {
     return (
       <div className="session-bar">
         {error && <div className="session-error">{error}</div>}
-        <span className="session-active">{command}{model ? ` (${model})` : ''} — active</span>
-        <button className="btn btn-danger" onClick={handleStop}>
-          Stop
-        </button>
+        <span className="session-active">
+          {command}{model ? ` (${model})` : ''} — active
+        </span>
+        {contextMeter}
+        <div className="session-actions">
+          <button className="btn btn-danger" onClick={handleStop}>
+            Stop
+          </button>
+        </div>
       </div>
     );
   }
 
-  // 无会话但已连接：遥控器模式（被动监控终端 Claude）
+  // mc claude 启动的 server：无托管 session，只被动监控本地终端 CLI
   if (state.status === 'connected' && state.runtime.launchMode === 'remote-control') {
     return (
       <div className="session-bar">
-        <span className="session-active">🔗 遥控器模式 — 终端 Claude 已连接</span>
+        <span className="session-active">🔗 遥控器模式 — 终端 CLI 已连接</span>
       </div>
     );
   }
 
-  // 无会话且未连接：显示完整选择界面
+  // mobilecoding 托管模式：连接后仍显示完整选择界面，由手机端启动 session
   return (
     <div className="session-bar">
       {error && <div className="session-error">{error}</div>}
@@ -176,7 +195,6 @@ export function SessionBar() {
         value={command}
         onChange={(e) => setCommand(e.target.value)}
         disabled={loading}
-        className="sel-command"
       >
         {COMMANDS.map((c) => (
           <option key={c.value} value={c.value}>
@@ -191,7 +209,6 @@ export function SessionBar() {
           value={model}
           onChange={(e) => setModel(e.target.value)}
           disabled={loading}
-          className="sel-model"
           title="选择 AI 模型"
         >
           {models.map((m) => (
@@ -209,7 +226,6 @@ export function SessionBar() {
           onChange={(e) => setSelectedSetting(e.target.value)}
           disabled={loading}
           title="选择 Claude 配置文件"
-          className="sel-settings"
         >
           {claudeSettings.map((s) => (
             <option key={s.path} value={s.path}>

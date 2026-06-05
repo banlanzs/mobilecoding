@@ -85,11 +85,6 @@ export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   );
   const hasThinking = !!event.thinking;
 
-  // 调试日志
-  if (event.thinking) {
-    console.log('[DEBUG] TextCard has thinking:', event.thinking.substring(0, 100));
-  }
-
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -104,7 +99,7 @@ export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
     <article className="card card-text">
       <header className="card-header">
         <span className="card-badge">assistant</span>
-        <span style={{ color: '#565f89', fontSize: 11 }}>
+        <span style={{ color: 'var(--mc-meta)', fontSize: 11 }}>
           {formatTime(event.time)}
         </span>
         <button

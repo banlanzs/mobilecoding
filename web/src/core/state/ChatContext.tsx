@@ -78,6 +78,7 @@ export interface ChatState {
   turnActive: boolean; // 整个 turn 是否在执行（用于控制"中止/发送"按钮）
   stopping: boolean; // 正在停止会话，阻止事件重新激活 turn
   agentState: AgentStateInfo;
+  contextWindow: { used: number; max: number } | null; // 最近 context_window 事件的用量，供 SessionBar 进度条
 }
 
 type Action =
@@ -120,6 +121,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         permissionPrompt: null,
         permissionRequestId: null,
         agentState: { status: 'idle', since: Date.now() },
+        contextWindow: null,
       };
     }
     case 'SESSION_STOPPED':
@@ -133,6 +135,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         turnActive: false,
         stopping: false,
         agentState: { status: 'idle', since: Date.now() },
+        contextWindow: null,
       };
     case 'RUNTIME_LOADED':
       return { ...state, runtime: action.runtime };
@@ -268,6 +271,12 @@ function reducer(state: ChatState, action: Action): ChatState {
       // thinking 仅在 turn_end / abort / SESSION_STOPPED 时被清除。
       // 早期实现中"收到 text_delta 就把 thinking=false"是按钮提早变回发送的根因。
 
+      // 更新上下文窗口用量（供 SessionBar 进度条绑定真实数据）
+      if (ev.type === 'context_window') {
+        const ctx = extractContextTokens((ev as any).toolInput);
+        if (ctx.max > 0) next.contextWindow = ctx;
+      }
+
       // 更新 Agent 状态
       const as = agentStateFromEvent(ev);
       if (as) {
@@ -332,7 +341,23 @@ const initialState: ChatState = {
   turnActive: false,
   stopping: false,
   agentState: { status: 'idle', since: Date.now() },
+  contextWindow: null,
 };
+
+// 从 context_window 事件的 toolInput 提取 token 用量
+function extractContextTokens(data: unknown): { used: number; max: number } {
+  if (!data || typeof data !== 'object') return { used: 0, max: 0 };
+  const obj = data as Record<string, unknown>;
+  const pick = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+    return 0;
+  };
+  return {
+    used: pick(obj.usedTokens ?? obj.used ?? obj.tokens),
+    max: pick(obj.maxTokens ?? obj.max ?? obj.contextWindow),
+  };
+}
 
 // 根据事件类型推导 Agent 状态
 function agentStateFromEvent(ev: AppEvent): Partial<AgentStateInfo> | null {

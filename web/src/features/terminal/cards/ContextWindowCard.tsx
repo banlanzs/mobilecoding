@@ -9,7 +9,7 @@ export function ContextWindowCard({ event }: { event: ContextWindowEvent }) {
     <article className="card card-context">
       <header className="card-header">
         <span className="card-badge">context</span>
-        <span style={{ color: '#9ece6a' }}>
+        <span style={{ color: 'var(--mc-success)' }}>
           {used.toLocaleString()} / {max.toLocaleString()} tokens
         </span>
       </header>

@@ -1,0 +1,66 @@
+/* Design Tokens — Neutral Modern (zinc) 色板，源自 ui-template/1 高保真原型 */
+/* 仅作为终端界面的设计令牌单一数据源；--mc-* 前缀避免与全局样式冲突 */
+
+:root {
+  /* ── 色彩 · 暗色（默认）────────────────────────────────────── */
+  --mc-bg: #09090b;
+  --mc-surface: #18181b;
+  --mc-surface-2: #1f1f23;
+  --mc-fg: #f4f4f5;
+  --mc-fg-2: #e4e4e7;
+  --mc-muted: #a1a1aa;
+  --mc-meta: #71717a;
+  --mc-border: #27272a;
+  --mc-border-soft: #202023;
+
+  --mc-accent: #3b82f6;
+  --mc-accent-on: #ffffff;
+  --mc-accent-hover: #60a5fa;
+  --mc-accent-soft: color-mix(in oklab, var(--mc-accent) 14%, transparent);
+
+  --mc-success: #10b981;
+  --mc-warn: #f59e0b;
+  --mc-danger: #ef4444;
+  --mc-purple: #a855f7;
+  --mc-purple-soft: color-mix(in oklab, var(--mc-purple) 12%, transparent);
+  --mc-purple-border: color-mix(in oklab, var(--mc-purple) 30%, transparent);
+
+  /* ── 字体 ──────────────────────────────────────────────────── */
+  /* 渐进 fallback：优先 Inter/JetBrains Mono，未安装则回落系统字体（不强制下载外部字体） */
+  --mc-font-body: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mc-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── 圆角 ──────────────────────────────────────────────────── */
+  --mc-radius-sm: 8px;
+  --mc-radius-md: 12px;
+  --mc-radius-lg: 16px;
+
+  /* ── 动画 ──────────────────────────────────────────────────── */
+  --mc-motion: 200ms cubic-bezier(0.2, 0, 0, 1);
+  --mc-motion-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 色彩 · 亮色 ───────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  --mc-bg: #fafafa;
+  --mc-surface: #ffffff;
+  --mc-surface-2: #f4f4f5;
+  --mc-fg: #111111;
+  --mc-fg-2: #27272a;
+  --mc-muted: #6b6b6b;
+  --mc-meta: #8e8e93;
+  --mc-border: #e5e5e5;
+  --mc-border-soft: #f0f0f0;
+
+  --mc-accent: #2f6feb;
+  --mc-accent-on: #ffffff;
+  --mc-accent-hover: #1d4ed8;
+  --mc-accent-soft: color-mix(in oklab, var(--mc-accent) 12%, transparent);
+
+  --mc-success: #16a34a;
+  --mc-warn: #d97706;
+  --mc-danger: #dc2626;
+  --mc-purple: #9333ea;
+  --mc-purple-soft: color-mix(in oklab, var(--mc-purple) 10%, transparent);
+  --mc-purple-border: color-mix(in oklab, var(--mc-purple) 28%, transparent);
+}
