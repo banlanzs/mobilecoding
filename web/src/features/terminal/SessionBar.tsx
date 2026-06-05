@@ -122,6 +122,7 @@ export function SessionBar() {
   };
 
   const handleStop = async () => {
+    if (state.stopping) return;
     setError(null);
     try {
       await sendStop();
@@ -161,8 +162,8 @@ export function SessionBar() {
           Relay Connected
         </div>
         <div className="session-actions">
-          <button className="btn btn-danger" onClick={handleStop}>
-            Disconnect
+          <button className="btn btn-danger" onClick={handleStop} disabled={state.stopping}>
+            {state.stopping ? 'Stopping...' : 'Disconnect'}
           </button>
         </div>
       </div>
@@ -180,8 +181,8 @@ export function SessionBar() {
         </span>
         {contextMeter}
         <div className="session-actions">
-          <button className="btn btn-danger" onClick={handleStop}>
-            Stop
+          <button className="btn btn-danger" onClick={handleStop} disabled={state.stopping}>
+            {state.stopping ? 'Stopping...' : 'Stop'}
           </button>
         </div>
       </div>

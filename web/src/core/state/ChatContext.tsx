@@ -67,6 +67,7 @@ export interface AgentStateInfo {
 export interface ChatState {
   status: ConnectionStatus;
   sessionId: string | null;
+  stoppedSessionId: string | null;
   messages: DisplayMessage[];
   lastSeq: number; // 最后收到的消息 seq，用于断线重连补发
   permissionPrompt: PermissionRequestEvent | null;
@@ -114,6 +115,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       return {
         ...state,
         sessionId: action.sessionId,
+        stoppedSessionId: null,
         messages: [],
         lastSeq: 0,
         lastError: null,
@@ -131,6 +133,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       return {
         ...state,
         sessionId: null,
+        stoppedSessionId: state.sessionId || state.stoppedSessionId,
         permissionPrompt: null,
         permissionRequestId: null,
         thinking: false,
@@ -152,6 +155,11 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'EVENT_RECEIVED': {
       const ev = action.event;
       console.log('[DEBUG] EVENT_RECEIVED:', ev.type, ev);
+
+      if (action.sessionId && action.sessionId === state.stoppedSessionId) {
+        console.log('[DEBUG] Ignoring event for stopped session:', action.sessionId);
+        return state;
+      }
 
       // 按 messageId 去重（防止重连重复事件），但权限请求不去重，确保每次都能显示
       if ((ev as any).messageId &&
@@ -216,7 +224,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       const next: ChatState = {
         ...state,
         messages,
-        sessionId: action.sessionId || state.sessionId,
+        sessionId: state.sessionId || (!state.stopping ? action.sessionId || null : null),
       };
 
       // 追踪最新 seq（持久化到 localStorage）
@@ -338,6 +346,7 @@ function savedSessionId(): string | null {
 const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
+  stoppedSessionId: null,
   messages: loadMessages(),
   lastSeq: loadLastSeq(),
   permissionPrompt: null,
@@ -576,14 +585,22 @@ export function ChatProvider({ children }: PropsWithChildren) {
   );
 
   const sendStop = useCallback(async (): Promise<void> => {
+    if (state.stopping) return;
     dispatch({ type: 'STOPPING' }); // 立即锁定 UI，阻止事件重新激活 turn
     if (state.connectionMode === 'relay') {
       disconnectRelay();
-    } else {
-      await client.stopSession();
-      dispatch({ type: 'SESSION_STOPPED' });
+      return;
     }
-  }, [client, state.connectionMode, disconnectRelay]);
+
+    dispatch({ type: 'SESSION_STOPPED' });
+    try {
+      await client.stopSession();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatch({ type: 'ERROR', error: msg });
+      console.error('stop session failed:', err);
+    }
+  }, [client, state.connectionMode, state.stopping, disconnectRelay]);
 
   const dismissPermission = useCallback(() => {
     dispatch({ type: 'PERMISSION_ANSWERED', allowed: false });

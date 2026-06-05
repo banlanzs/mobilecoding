@@ -64,6 +64,7 @@ func (m *Manager) Start(ctx context.Context, req ExecRequest, run engine.Runner)
 	if err := run.Start(ctx, req); err != nil {
 		m.mu.Lock()
 		m.active = nil
+		m.sid = ""
 		m.mu.Unlock()
 		m.log("session", "runner start FAILED: command=%s err=%v", req.Command, err)
 		return "", err
@@ -87,6 +88,7 @@ func (m *Manager) forward(run engine.Runner) {
 				m.mu.Lock()
 				if m.active == run {
 					m.active = nil
+					m.sid = ""
 				}
 				m.mu.Unlock()
 				m.log("session", "runner exited (events closed), forwarded %d events", count)
@@ -118,6 +120,7 @@ func (m *Manager) Stop() error {
 	m.mu.Lock()
 	run := m.active
 	m.active = nil
+	m.sid = ""
 	m.mu.Unlock()
 	if run == nil {
 		return nil
