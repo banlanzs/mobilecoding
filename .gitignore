@@ -34,7 +34,11 @@ coverage.out
 #cli
 .claude/
 .gemini/
+.workflow/
 
 #resources
 ui-template/
 hello.md
+
+# 测试文件
+test.txt

@@ -1,6 +1,6 @@
 /* terminal.css — 终端界面样式 */
 /* 设计语言：Neutral Modern (zinc)，源自 ui-template/1；在现有功能与组件结构上换肤 */
-/* 颜色/字体/圆角/动画统一引用 tokens.css 的 --mc-* 令牌，支持亮/暗双主题 */
+/* 颜色/字体/圆角/动画统一引用 tokens.css 的 --mc-* 令牌，支持亮/暗/终端三主题 */
 @import '../../styles/tokens.css';
 
 /* ─── 全局容器 ──────────────────────────────────────────────────────── */
@@ -408,6 +408,29 @@
 
 .btn-danger:not(:disabled):hover {
   background: color-mix(in oklab, var(--mc-danger) 22%, transparent);
+}
+
+/* 双重确认停止按钮状态 */
+.btn-confirm-stop {
+  background: var(--mc-danger);
+  color: white;
+  border-color: var(--mc-danger);
+  animation: pulse-warning 1s ease-in-out infinite;
+}
+
+.btn-confirm-stop:not(:disabled):hover {
+  background: color-mix(in oklab, var(--mc-danger) 90%, black);
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--mc-danger);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 8px 2px color-mix(in oklab, var(--mc-danger) 50%, transparent);
+  }
 }
 
 /* Relay 模式指示 */
@@ -1638,3 +1661,117 @@
     margin: 0 auto;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   终端主题特殊样式 — CRT 显示器效果
+   ══════════════════════════════════════════════════════════════════════ */
+:root[data-theme="terminal"] {
+  /* 全局字体：终端主题强制使用等宽字体 */
+  --mc-font-body: var(--mc-font-mono);
+}
+
+:root[data-theme="terminal"] .terminal {
+  /* CRT 扫描线效果 */
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15),
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    ),
+    var(--mc-bg);
+
+  /* 文字发光效果 */
+  text-shadow: 0 0 5px currentColor;
+}
+
+/* 终端主题下的卡片样式 */
+:root[data-theme="terminal"] .card {
+  border: 1px solid var(--mc-border);
+  background: rgba(0, 20, 0, 0.3);
+  box-shadow: none;
+}
+
+/* 终端主题下的消息颜色编码（模拟 Happy RemoteModeDisplay）*/
+:root[data-theme="terminal"] .card-user {
+  color: var(--mc-terminal-user);
+  border-color: var(--mc-terminal-user);
+}
+
+:root[data-theme="terminal"] .card-text .card-badge {
+  color: var(--mc-terminal-assistant);
+}
+
+:root[data-theme="terminal"] .card-tool-use .card-badge {
+  color: var(--mc-terminal-tool);
+}
+
+:root[data-theme="terminal"] .card-tool-result .card-badge {
+  color: var(--mc-terminal-result);
+}
+
+:root[data-theme="terminal"] .card-lifecycle,
+:root[data-theme="terminal"] .card-session {
+  color: var(--mc-terminal-status);
+  border-color: var(--mc-terminal-status);
+}
+
+/* 终端主题下的按钮样式 */
+:root[data-theme="terminal"] .btn,
+:root[data-theme="terminal"] .btn-primary,
+:root[data-theme="terminal"] .btn-danger {
+  border: 1px solid currentColor;
+  background: transparent;
+  text-shadow: 0 0 3px currentColor;
+  transition: all var(--mc-motion);
+}
+
+:root[data-theme="terminal"] .btn:not(:disabled):hover,
+:root[data-theme="terminal"] .btn-primary:not(:disabled):hover,
+:root[data-theme="terminal"] .btn-danger:not(:disabled):hover {
+  background: color-mix(in oklab, currentColor 15%, transparent);
+  box-shadow: 0 0 10px currentColor;
+}
+
+/* 终端主题下的输入框 */
+:root[data-theme="terminal"] textarea {
+  background: rgba(0, 20, 0, 0.5);
+  border: 1px solid var(--mc-success);
+  color: var(--mc-fg);
+  text-shadow: 0 0 3px var(--mc-fg);
+}
+
+:root[data-theme="terminal"] textarea:focus {
+  border-color: var(--mc-accent);
+  box-shadow: 0 0 8px var(--mc-accent);
+}
+
+/* 终端主题下的状态点动画增强 */
+:root[data-theme="terminal"] .status-dot.connected {
+  box-shadow: 0 0 12px var(--mc-success), 0 0 24px var(--mc-success);
+}
+
+/* 终端主题下的 markdown 代码块 */
+:root[data-theme="terminal"] .markdown-body pre {
+  background: rgba(0, 20, 0, 0.6);
+  border: 1px solid var(--mc-success);
+  box-shadow: inset 0 0 10px rgba(0, 255, 0, 0.1);
+}
+
+:root[data-theme="terminal"] .markdown-body code {
+  background: rgba(0, 20, 0, 0.4);
+  color: var(--mc-accent);
+}
+
+/* 终端主题彩蛋：屏幕闪烁效果（可选，默认禁用） */
+@keyframes terminal-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.98; }
+}
+
+/* 取消注释下面这行以启用闪烁效果（略微降低可读性，但增强怀旧感）*/
+/* :root[data-theme="terminal"] .terminal {
+  animation: terminal-flicker 0.15s infinite;
+} */
+

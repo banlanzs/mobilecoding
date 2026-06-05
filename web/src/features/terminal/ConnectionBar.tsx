@@ -25,11 +25,16 @@ export function ConnectionBar() {
     : `status-dot ${state.status}`;
 
   const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
+    // 循环切换：dark → light → terminal → dark
+    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'terminal' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem('mc-theme', next); } catch {}
     setTheme(next);
   };
+
+  // 主题图标
+  const themeIcon = theme === 'dark' ? '☀️' : theme === 'light' ? '💻' : '🌙';
+  const themeLabel = theme === 'dark' ? '亮色' : theme === 'light' ? '终端' : '暗色';
 
   return (
     <div className="connection-bar">
@@ -42,10 +47,10 @@ export function ConnectionBar() {
         <button
           className="theme-toggle"
           onClick={toggleTheme}
-          aria-label="切换主题"
-          title={theme === 'dark' ? '切换到亮色' : '切换到暗色'}
+          aria-label={`切换到${themeLabel}模式`}
+          title={`切换到${themeLabel}模式`}
         >
-          {theme === 'dark' ? '☀' : '🌙'}
+          {themeIcon}
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
 const COMMANDS = [
@@ -25,6 +25,10 @@ export function SessionBar() {
   const [model, setModel] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 双重确认停止状态
+  const [confirmStop, setConfirmStop] = useState(false);
+  const confirmTimeoutRef = useRef<number | null>(null);
 
   // 模型列表（从服务端拉取）
   const [models, setModels] = useState<ModelOption[]>([{ value: '', label: '默认模型' }]);
@@ -123,6 +127,28 @@ export function SessionBar() {
 
   const handleStop = async () => {
     if (state.stopping) return;
+
+    // 双重确认机制
+    if (!confirmStop) {
+      // 第一次点击：进入确认模式
+      setConfirmStop(true);
+      // 5 秒后自动取消确认
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmStop(false);
+      }, 5000);
+      return;
+    }
+
+    // 第二次点击：真正停止
+    setConfirmStop(false);
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+      confirmTimeoutRef.current = null;
+    }
+
     setError(null);
     try {
       await sendStop();
@@ -131,6 +157,15 @@ export function SessionBar() {
       console.error('stop session failed:', err);
     }
   };
+
+  // 清理超时定时器
+  useEffect(() => {
+    return () => {
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCommandChange = (next: string) => {
     setCommand(next);
@@ -162,8 +197,13 @@ export function SessionBar() {
           Relay Connected
         </div>
         <div className="session-actions">
-          <button className="btn btn-danger" onClick={handleStop} disabled={state.stopping}>
-            {state.stopping ? 'Stopping...' : 'Disconnect'}
+          <button
+            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            onClick={handleStop}
+            disabled={state.stopping}
+            title={confirmStop ? '再次点击确认断开' : '断开连接'}
+          >
+            {state.stopping ? 'Stopping...' : confirmStop ? '⚠️ 确认断开？' : 'Disconnect'}
           </button>
         </div>
       </div>
@@ -181,8 +221,13 @@ export function SessionBar() {
         </span>
         {contextMeter}
         <div className="session-actions">
-          <button className="btn btn-danger" onClick={handleStop} disabled={state.stopping}>
-            {state.stopping ? 'Stopping...' : 'Stop'}
+          <button
+            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            onClick={handleStop}
+            disabled={state.stopping}
+            title={confirmStop ? '再次点击确认停止' : '停止会话'}
+          >
+            {state.stopping ? 'Stopping...' : confirmStop ? '⚠️ 确认停止？' : 'Stop'}
           </button>
         </div>
       </div>
