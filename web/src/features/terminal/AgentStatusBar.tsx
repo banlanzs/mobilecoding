@@ -21,7 +21,8 @@ export function AgentStatusBar() {
   const { state } = useChat();
   const { agentState } = state;
 
-  const cli = CLI_INFO[state.runtime.defaultCommand] || { avatar: '◆', name: 'AI Agent' };
+  const command = state.selectedCommand || state.runtime.defaultCommand || 'claude';
+  const cli = CLI_INFO[command] || { avatar: '◆', name: 'AI Agent' };
 
   const isThinking = agentState.status === 'thinking';
   const isStreaming = state.turnActive && !isThinking;

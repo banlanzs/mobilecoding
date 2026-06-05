@@ -38,13 +38,26 @@ export function InputBar() {
   // 键盘弹出适配
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
-    const onResize = () => {
-      const diff = window.innerHeight - vv.height;
-      document.documentElement.style.setProperty('--keyboard-inset', `${Math.max(0, diff)}px`);
+    const root = document.documentElement;
+    const updateInsets = () => {
+      const bottomInset = vv
+        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        : 0;
+      const standalone = window.matchMedia('(display-mode: standalone)').matches
+        || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      const touchBrowser = window.matchMedia('(pointer: coarse)').matches && !standalone;
+      root.style.setProperty('--keyboard-inset', `${bottomInset}px`);
+      root.style.setProperty('--browser-chrome-inset', touchBrowser ? '20px' : '0px');
     };
-    vv.addEventListener('resize', onResize);
-    return () => vv.removeEventListener('resize', onResize);
+    updateInsets();
+    vv?.addEventListener('resize', updateInsets);
+    vv?.addEventListener('scroll', updateInsets);
+    window.addEventListener('orientationchange', updateInsets);
+    return () => {
+      vv?.removeEventListener('resize', updateInsets);
+      vv?.removeEventListener('scroll', updateInsets);
+      window.removeEventListener('orientationchange', updateInsets);
+    };
   }, []);
 
   // 输入框自动缩放
@@ -112,7 +125,7 @@ export function InputBar() {
     : '输入消息… (Enter 发送, Shift+Enter 换行)';
 
   return (
-    <div className="input-bar" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px))' }}>
+    <div className="input-bar">
       <div className="quick-chips">
         {QUICK_CHIPS.map((chip) => (
           <button key={chip} type="button" className="chip" onClick={() => applyChip(chip)}>

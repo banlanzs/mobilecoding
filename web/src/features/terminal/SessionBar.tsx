@@ -20,7 +20,7 @@ interface ClaudeSetting {
 }
 
 export function SessionBar() {
-  const { state, sendStart, sendStop } = useChat();
+  const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,10 +33,11 @@ export function SessionBar() {
   const [selectedSetting, setSelectedSetting] = useState<string>('');
 
   useEffect(() => {
-    if (state.runtime.defaultCommand) {
-      setCommand(state.runtime.defaultCommand);
+    const nextCommand = state.selectedCommand || state.runtime.defaultCommand;
+    if (nextCommand) {
+      setCommand(nextCommand);
     }
-  }, [state.runtime.defaultCommand]);
+  }, [state.runtime.defaultCommand, state.selectedCommand]);
 
   useEffect(() => {
     setError(null);
@@ -98,6 +99,7 @@ export function SessionBar() {
     setLoading(true);
     setError(null);
     try {
+      setSelectedCommand(command);
       let args: string[] = [];
 
       if (model) {
@@ -126,6 +128,14 @@ export function SessionBar() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to stop');
       console.error('stop session failed:', err);
+    }
+  };
+
+  const handleCommandChange = (next: string) => {
+    setCommand(next);
+    setSelectedCommand(next);
+    if (next !== 'claude') {
+      setModel('');
     }
   };
 
@@ -161,11 +171,12 @@ export function SessionBar() {
 
   // 有活跃会话：会话信息 + 上下文进度 + Stop
   if (state.sessionId) {
+    const activeLabel = `${command}${model ? ` (${model})` : ''} — active`;
     return (
-      <div className="session-bar">
+      <div className="session-bar session-bar-active">
         {error && <div className="session-error">{error}</div>}
-        <span className="session-active">
-          {command}{model ? ` (${model})` : ''} — active
+        <span className="session-active" title={activeLabel}>
+          {activeLabel}
         </span>
         {contextMeter}
         <div className="session-actions">
@@ -188,12 +199,13 @@ export function SessionBar() {
 
   // mobilecoding 托管模式：连接后仍显示完整选择界面，由手机端启动 session
   return (
-    <div className="session-bar">
+    <div className="session-bar session-bar-setup">
       {error && <div className="session-error">{error}</div>}
 
       <select
+        className="sel-command"
         value={command}
-        onChange={(e) => setCommand(e.target.value)}
+        onChange={(e) => handleCommandChange(e.target.value)}
         disabled={loading}
       >
         {COMMANDS.map((c) => (
@@ -206,6 +218,7 @@ export function SessionBar() {
       {/* 模型选择 — 仅 Claude 时显示 */}
       {command === 'claude' && (
         <select
+          className="sel-model"
           value={model}
           onChange={(e) => setModel(e.target.value)}
           disabled={loading}
@@ -222,6 +235,7 @@ export function SessionBar() {
       {/* Claude 配置选择 */}
       {command === 'claude' && claudeSettings.length > 0 && (
         <select
+          className="sel-settings"
           value={selectedSetting}
           onChange={(e) => setSelectedSetting(e.target.value)}
           disabled={loading}

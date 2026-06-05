@@ -73,6 +73,7 @@ export interface ChatState {
   permissionRequestId: string | null; // Claude stdio protocol request_id
   lastError: string | null;
   runtime: RuntimeConfig;
+  selectedCommand: string;
   connectionMode: 'direct' | 'relay';
   thinking: boolean;
   turnActive: boolean; // 整个 turn 是否在执行（用于控制"中止/发送"按钮）
@@ -92,6 +93,7 @@ type Action =
   | { type: 'ABORT_TURN' }
   | { type: 'STOPPING' }
   | { type: 'ERROR'; error: string }
+  | { type: 'SET_SELECTED_COMMAND'; command: string }
   | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
 
 function reducer(state: ChatState, action: Action): ChatState {
@@ -138,7 +140,13 @@ function reducer(state: ChatState, action: Action): ChatState {
         contextWindow: null,
       };
     case 'RUNTIME_LOADED':
-      return { ...state, runtime: action.runtime };
+      return {
+        ...state,
+        runtime: action.runtime,
+        selectedCommand: state.selectedCommand || action.runtime.defaultCommand || '',
+      };
+    case 'SET_SELECTED_COMMAND':
+      return { ...state, selectedCommand: action.command };
     case 'SET_CONNECTION_MODE':
       return { ...state, connectionMode: action.mode };
     case 'EVENT_RECEIVED': {
@@ -336,6 +344,7 @@ const initialState: ChatState = {
   permissionRequestId: null,
   lastError: null,
   runtime: { defaultCommand: '', defaultArgs: [], launchMode: 'managed', cwd: '' },
+  selectedCommand: '',
   connectionMode: 'direct',
   thinking: false,
   turnActive: false,
@@ -385,6 +394,7 @@ interface ChatContextValue {
   abortTurn: () => Promise<void>;
   answerPermission: (allow: boolean, toolName: string, requestId?: string) => Promise<void>;
   dismissPermission: () => void;
+  setSelectedCommand: (command: string) => void;
   connectRelay: (config: RelayConfig) => void;
   disconnectRelay: () => void;
 }
@@ -579,6 +589,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
     dispatch({ type: 'PERMISSION_ANSWERED', allowed: false });
   }, []);
 
+  const setSelectedCommand = useCallback((command: string) => {
+    dispatch({ type: 'SET_SELECTED_COMMAND', command });
+  }, []);
+
   const abortTurn = useCallback(async (): Promise<void> => {
     dispatch({ type: 'ABORT_TURN' });
     if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -610,6 +624,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     abortTurn,
     answerPermission,
     dismissPermission,
+    setSelectedCommand,
     connectRelay,
     disconnectRelay,
   };

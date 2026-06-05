@@ -14,7 +14,7 @@
 
 .terminal {
   height: 100dvh;
-  height: 100svh; /* fallback */
+  min-height: 100svh;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -221,11 +221,24 @@
   color: var(--mc-muted);
 }
 
+.session-bar-active {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 6px 12px;
+}
+
+.session-bar-setup {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
 .session-actions {
   margin-left: auto;
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .session-error {
@@ -251,6 +264,38 @@
   transition: border-color var(--mc-motion);
 }
 
+.session-bar-setup select {
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.session-bar-setup .sel-command {
+  flex: 0 1 86px;
+}
+
+.session-bar-setup .sel-model {
+  flex: 1 1 92px;
+}
+
+.session-bar-setup .sel-settings {
+  flex: 0 1 78px;
+}
+
+.session-bar-setup .session-actions {
+  margin-left: 0;
+}
+
+.session-bar-setup .btn {
+  min-width: 54px;
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
 .session-bar select:focus {
   border-color: var(--mc-accent);
 }
@@ -259,6 +304,31 @@
   font-family: var(--mc-font-mono);
   font-size: 11px;
   color: var(--mc-success);
+  min-width: 0;
+}
+
+.session-bar-active .session-active {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-bar-active .session-actions {
+  margin-left: 0;
+}
+
+.session-bar-active .btn {
+  min-width: 52px;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.session-bar-active .context-window {
+  flex: 0 1 96px;
+  min-width: 80px;
+  max-width: 108px;
+  margin-left: 0;
 }
 
 .session-id {
@@ -947,9 +1017,9 @@
 .input-bar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  gap: 6px;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px) + var(--browser-chrome-inset, 0px));
   background: var(--mc-surface);
   border-top: 1px solid var(--mc-border);
   flex-shrink: 0;
@@ -975,7 +1045,7 @@
   color: var(--mc-fg-2);
   font-family: var(--mc-font-mono);
   font-size: 12px;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 99px;
   cursor: pointer;
   white-space: nowrap;
@@ -992,7 +1062,7 @@
 .input-row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .input-wrapper {
@@ -1000,7 +1070,7 @@
   background: var(--mc-bg);
   border: 1px solid var(--mc-border);
   border-radius: var(--mc-radius-lg);
-  padding: 8px 14px;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
   transition: border-color var(--mc-motion), box-shadow var(--mc-motion);
@@ -1526,8 +1596,13 @@
 @media (max-width: 480px) {
   .terminal { font-size: 13px; line-height: 1.5; }
   .card { padding: 6px 12px; }
-  .input-bar { padding: 10px; gap: 8px; }
+  .input-bar {
+    padding: 8px 10px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px) + var(--browser-chrome-inset, 0px));
+    gap: 6px;
+  }
   .session-bar select { font-size: 12px; padding: 4px 6px; min-height: 34px; max-width: 110px; }
+  .session-bar-setup select { max-width: none; }
   .btn { font-size: 12px; padding: 5px 10px; min-height: 34px; }
   .connection-bar { padding: 4px 10px; min-height: 26px; }
   .markdown-body h1 { font-size: 17px; }
