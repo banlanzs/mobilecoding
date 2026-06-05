@@ -70,13 +70,10 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		})
 	})
 
-	// 客户端状态端点（不需要认证，供 mc CLI 轮询检测手机连接）
+	// 客户端状态端点 + WebSocket（不需要认证，QR 码 token 提供初始安全性）
 	r.Get("/api/v1/clients", clientsHandler(deps.WS))
 	r.Get("/api/v1/session-id", sessionIDHandler(deps.Session))
-
-	r.With(func(next http.Handler) http.Handler {
-		return auth.BearerMiddleware(authToken, next)
-	}).Handle("/api/v1/ws", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		if deps.WS == nil {
 			http.Error(w, "ws handler not configured", http.StatusServiceUnavailable)
 			return
@@ -87,7 +84,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 			return
 		}
 		_ = deps.WS.ServeConn(r.Context(), c)
-	}))
+	})
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
