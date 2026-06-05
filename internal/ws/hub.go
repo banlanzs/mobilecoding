@@ -1,12 +1,17 @@
 package ws
 
-import "sync"
+import (
+	"log"
+	"sync"
+	"sync/atomic"
+)
 
 type Hub struct {
 	mu           sync.Mutex
 	subscribers  map[chan Envelope]struct{}
 	onConnect    func()  // 新连接回调（可选，用于 Local/Remote 切换通知）
 	onDisconnect func()  // 连接断开回调（可选）
+	dropCount    atomic.Int64 // 背压丢弃计数
 }
 
 func NewHub() *Hub {
@@ -56,7 +61,10 @@ func (h *Hub) Broadcast(env Envelope) {
 		select {
 		case ch <- env:
 		default:
-			// 背压：丢下一条
+			drops := h.dropCount.Add(1)
+			if drops%100 == 1 {
+				log.Printf("[hub] backpressure: dropped %d messages total", drops)
+			}
 		}
 	}
 }

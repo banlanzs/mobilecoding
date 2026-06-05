@@ -25,7 +25,15 @@ import type {
 
 const MAX_MESSAGES = 500;
 const STORED_MESSAGES_KEY = 'mobilecoding.messages';
+const STORED_LAST_SEQ_KEY = 'mobilecoding.lastSeq';
 const MAX_STORED_MESSAGES = 200;
+
+function saveLastSeq(seq: number): void {
+  try { localStorage.setItem(STORED_LAST_SEQ_KEY, String(seq)); } catch {}
+}
+function loadLastSeq(): number {
+  try { return Number(localStorage.getItem(STORED_LAST_SEQ_KEY)) || 0; } catch { return 0; }
+}
 
 function saveMessages(msgs: DisplayMessage[]): void {
   try {
@@ -99,6 +107,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         localStorage.setItem('mobilecoding.sessionId', action.sessionId);
         localStorage.removeItem('mobilecoding.messages');
       } catch {}
+      saveLastSeq(0);
       return {
         ...state,
         sessionId: action.sessionId,
@@ -199,9 +208,10 @@ function reducer(state: ChatState, action: Action): ChatState {
         sessionId: action.sessionId || state.sessionId,
       };
 
-      // 追踪最新 seq
+      // 追踪最新 seq（持久化到 localStorage）
       if (ev.seq && ev.seq > state.lastSeq) {
         next.lastSeq = ev.seq;
+        saveLastSeq(ev.seq);
       }
 
       // 处理权限请求：兼容两种事件类型
@@ -312,7 +322,7 @@ const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
   messages: loadMessages(),
-  lastSeq: 0,
+  lastSeq: loadLastSeq(),
   permissionPrompt: null,
   permissionRequestId: null,
   lastError: null,
@@ -382,6 +392,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
         const data = await res.json();
         const missed = (data.messages || []) as Array<{ seq: number; type: string; content: string }>;
         if (missed.length === 0) return;
+        // 按 seq 排序后批量 dispatch，保证消息顺序
+        missed.sort((a, b) => a.seq - b.seq);
         console.log('[RECONNECT] fetched', missed.length, 'missed messages after seq', state.lastSeq);
         for (const msg of missed) {
           try {

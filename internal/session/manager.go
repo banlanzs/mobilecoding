@@ -32,7 +32,7 @@ type Manager struct {
 // NewManager 构造一个空 manager。
 func NewManager() *Manager {
 	return &Manager{
-		out: make(chan Event, 64),
+		out: make(chan Event, 256),
 		err: make(chan error, 8),
 		log: func(string, string, ...any) {},
 	}
@@ -92,7 +92,11 @@ func (m *Manager) forward(run engine.Runner) {
 				m.log("session", "runner exited (events closed), forwarded %d events", count)
 				return
 			}
-			m.out <- ev
+			select {
+			case m.out <- ev:
+			default:
+				m.log("session", "backpressure: out channel full, dropping event #%d kind=%s", count, ev.Kind)
+			}
 			count++
 			if count <= 5 || count%50 == 0 {
 				m.log("session", "event #%d kind=%s len=%d", count, ev.Kind, len(ev.Data))

@@ -194,6 +194,10 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	} else {
 		defer msgStore.Close()
 		logger.Info("startup", "message store ready")
+		// 启动时清理超过 7 天的旧消息
+		if deleted, err := msgStore.CleanupOldSessions(7); err == nil && deleted > 0 {
+			logger.Info("startup", "cleaned up %d old messages", deleted)
+		}
 	}
 
 	// 创建 relay 服务器

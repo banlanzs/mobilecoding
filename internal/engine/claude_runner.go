@@ -325,12 +325,12 @@ func (r *ClaudeRunner) waitLoop() {
 		}
 		select {
 		case r.events <- Event{Kind: EventLifecycle, Message: "turn_end: " + err.Error()}:
-		default:
+		case <-time.After(5 * time.Second):
 		}
 	} else {
 		select {
 		case r.events <- Event{Kind: EventLifecycle, Message: "turn_end"}:
-		default:
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
