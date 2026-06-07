@@ -221,6 +221,65 @@
   color: var(--mc-muted);
 }
 
+.btn-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--mc-surface-2);
+  color: var(--mc-fg-2);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--mc-motion);
+  flex-shrink: 0;
+}
+
+.btn-back:hover {
+  background: var(--mc-surface-3);
+  border-color: var(--mc-border-hover);
+}
+
+.btn-back:active {
+  transform: scale(0.95);
+}
+
+.btn-files {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.5rem;
+  background: var(--mc-surface-2);
+  color: var(--mc-fg-2);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--mc-motion);
+  flex-shrink: 0;
+}
+
+.btn-files:hover {
+  background: var(--mc-surface-3);
+  border-color: var(--mc-border-hover);
+}
+
+.btn-files.active {
+  background: var(--mc-primary);
+  border-color: var(--mc-primary);
+  color: white;
+}
+
+.btn-files:active {
+  transform: scale(0.95);
+}
+
 .session-bar-active {
   flex-wrap: nowrap;
   gap: 6px;
@@ -950,6 +1009,75 @@
 
 .tool-event-icon { font-size: 13px; }
 .tool-event-text { color: var(--mc-muted); }
+
+/* 可展开的工具事件卡片 */
+.card-tool-event-expandable {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  border-bottom: none;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  margin: 4px 0;
+}
+
+.tool-event-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background var(--mc-motion);
+}
+
+.tool-event-header:hover {
+  background: var(--mc-surface-2);
+}
+
+.tool-event-expand {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--mc-meta);
+}
+
+.tool-event-details {
+  padding: 8px 12px;
+  background: var(--mc-surface-2);
+  border-top: 1px solid var(--mc-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-detail-item {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tool-detail-label {
+  color: var(--mc-meta);
+  font-weight: 600;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.tool-detail-value {
+  color: var(--mc-fg-2);
+  flex: 1;
+  word-break: break-all;
+}
+
+.tool-detail-value code,
+.tool-detail-item code {
+  background: var(--mc-surface-3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--mc-font-mono);
+  font-size: 11px;
+}
 
 /* ─── 上下文窗口卡片（消息流内）─────────────────────────────────────── */
 .card-context .card-badge {
@@ -1774,4 +1902,244 @@
 /* :root[data-theme="terminal"] .terminal {
   animation: terminal-flicker 0.15s infinite;
 } */
+
+/* ─── 横屏适配（手机横屏）─────────────────────────────────────────────── */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* 压缩顶部栏高度 */
+  .connection-bar {
+    padding: 3px 10px;
+    min-height: 24px;
+    font-size: 10px;
+  }
+
+  .agent-status-bar {
+    padding: 3px 10px;
+    min-height: 24px;
+    font-size: 10px;
+  }
+
+  .session-bar {
+    padding: 4px 10px;
+    gap: 4px;
+  }
+
+  .session-bar select {
+    font-size: 11px;
+    padding: 3px 6px;
+    min-height: 28px;
+  }
+
+  .btn {
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 28px;
+  }
+
+  .btn-back,
+  .btn-files {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  /* 压缩底部输入栏 */
+  .input-bar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .input-text {
+    min-height: 32px;
+    font-size: 13px;
+  }
+
+  .input-send {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  /* 消息列表更紧凑 */
+  .message-list {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .message-item {
+    padding: 6px 10px;
+  }
+
+  .markdown-body {
+    font-size: 13px;
+  }
+
+  .markdown-body h1 {
+    font-size: 16px;
+  }
+
+  .markdown-body h2 {
+    font-size: 14px;
+  }
+
+  .markdown-body h3 {
+    font-size: 13px;
+  }
+
+  .markdown-body pre {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  /* Git 文件面板调整 */
+  .git-sidebar {
+    max-height: 50vh;
+  }
+
+  .git-sidebar-header {
+    padding: 4px 8px;
+  }
+
+  .git-file-item {
+    padding: 4px 8px;
+  }
+}
+
+/* ─── 平板适配（768px - 1024px）──────────────────────────────────────── */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* 移除宽度限制，使用全宽 */
+  #root:has(.terminal) {
+    max-width: 100%;
+  }
+
+  .terminal {
+    border-left: none;
+    border-right: none;
+    font-size: 15px;
+  }
+
+  /* 顶部栏宽松布局 */
+  .connection-bar {
+    padding: 8px 20px;
+  }
+
+  .agent-status-bar {
+    padding: 8px 20px;
+  }
+
+  .session-bar {
+    padding: 8px 20px;
+  }
+
+  /* 消息列表两列布局（如果空间足够）*/
+  .message-list {
+    padding: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .message-item {
+    padding: 12px 16px;
+  }
+
+  .markdown-body {
+    font-size: 15px;
+  }
+
+  /* Git 文件面板改为右侧边栏 */
+  .git-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    max-height: 100vh;
+    width: 360px;
+    border-top: none;
+    border-left: 1px solid var(--border, #334155);
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 当文件面板打开时，终端内容留出右侧空间 */
+  .terminal.has-git-sidebar {
+    margin-right: 360px;
+  }
+
+  /* Diff 面板在侧边栏内 */
+  .git-diff-panel {
+    position: static;
+    max-height: none;
+    flex: 1;
+    border-top: 1px solid var(--border, #334155);
+  }
+
+  /* 输入栏 */
+  .input-bar {
+    padding: 12px 20px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .input-text {
+    font-size: 15px;
+  }
+}
+
+/* ─── 大屏平板/桌面（1024px+）横屏模式 ────────────────────────────────── */
+@media (min-width: 1024px) and (orientation: landscape) {
+  /* 使用全宽，不限制容器 */
+  #root:has(.terminal) {
+    max-width: 100%;
+  }
+
+  .terminal {
+    border: none;
+    font-size: 15px;
+  }
+
+  /* 消息列表居中，留出阅读空间 */
+  .message-list {
+    padding: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .message-item {
+    padding: 14px 18px;
+  }
+
+  /* Git 文件面板更宽 */
+  .git-sidebar {
+    width: 420px;
+  }
+
+  .terminal.has-git-sidebar {
+    margin-right: 420px;
+  }
+
+  /* 输入栏 */
+  .input-bar {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+}
+
+/* ─── 超大屏（1440px+）─────────────────────────────────────────────── */
+@media (min-width: 1440px) {
+  .message-list {
+    max-width: 1280px;
+  }
+
+  .input-bar {
+    max-width: 1280px;
+  }
+
+  .markdown-body {
+    font-size: 16px;
+  }
+
+  .markdown-body pre {
+    font-size: 14px;
+  }
+}
 

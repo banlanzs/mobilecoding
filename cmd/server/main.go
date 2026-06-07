@@ -206,9 +206,20 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	// 创建 relay 服务器
 	relayServer := relay.NewServer(relay.DefaultSessionConfig())
 
+	// 会话元数据存储
+	sessionStore, err := session.NewStore("")
+	if err != nil {
+		logger.Warn("startup", "open session store: %v (continuing without persistence)", err)
+	} else {
+		logger.Info("startup", "session store ready")
+	}
+
 	hub := ws.NewHub()
 	mgr := session.NewManager()
 	mgr.SetLogger(logger.Info)
+	if sessionStore != nil {
+		mgr.SetStore(sessionStore)
+	}
 	wsHandler := ws.NewHandler(hub, mgr, logger)
 
 	// 权限 hook：Claude Code 的 PermissionRequest HTTP hook 端点

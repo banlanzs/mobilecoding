@@ -1,4 +1,6 @@
 // 终端主页面 — mobile-first 全屏对话界面
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useChat } from '../../core/state/ChatContext';
 import { ConnectionBar } from './ConnectionBar';
 import { AgentStatusBar } from './AgentStatusBar';
@@ -7,10 +9,14 @@ import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
 import { PermissionBanner } from './PermissionBanner';
 import { Onboarding } from './Onboarding';
+import { GitFilesSidebar } from '../files/GitFilesSidebar';
 import './terminal.css';
 
 export function TerminalPage() {
+  const { id: sessionId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { state } = useChat();
+  const [showGitFiles, setShowGitFiles] = useState(false);
 
   // Relay 模式或有 token 时显示完整界面
   const hasToken = !!localStorage.getItem('mobilecoding.token');
@@ -36,11 +42,24 @@ export function TerminalPage() {
   // 无消息且无活跃 session 时显示引导页
   const showOnboarding = state.messages.length === 0 && !state.sessionId;
 
+  const handleBack = () => {
+    navigate('/sessions');
+  };
+
+  const toggleGitFiles = () => {
+    setShowGitFiles(!showGitFiles);
+  };
+
   return (
-    <div className="terminal">
+    <div className={`terminal ${showGitFiles ? 'has-git-sidebar' : ''}`}>
       <ConnectionBar />
       <AgentStatusBar />
-      <SessionBar />
+      <SessionBar
+        onBack={handleBack}
+        currentSessionId={sessionId}
+        onToggleFiles={toggleGitFiles}
+        showFiles={showGitFiles}
+      />
       {state.lastError && (
         <div className="error-msg">{state.lastError}</div>
       )}
@@ -51,6 +70,12 @@ export function TerminalPage() {
       )}
       <InputBar />
       <PermissionBanner />
+      {showGitFiles && (
+        <GitFilesSidebar
+          cwd={state.runtime.cwd}
+          onClose={() => setShowGitFiles(false)}
+        />
+      )}
     </div>
   );
 }

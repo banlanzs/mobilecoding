@@ -103,6 +103,17 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/messages", messagesHandler(deps.MsgStore))
 		r.Get("/search", searchHandler(deps.MsgStore))
 		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
+
+		// 会话管理 API
+		r.Get("/sessions", sessionsListHandler(deps.Session))
+		r.Post("/sessions", sessionsCreateHandler(deps.Session))
+		r.Get("/sessions/{id}", sessionsGetHandler(deps.Session))
+		r.Delete("/sessions/{id}", sessionsDeleteHandler(deps.Session))
+
+		// Git 文件变更 API
+		r.Get("/git/status", gitStatusHandler())
+		r.Get("/git/diff", gitDiffHandler())
+		r.Get("/git/diff-summary", gitDiffSummaryHandler())
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），

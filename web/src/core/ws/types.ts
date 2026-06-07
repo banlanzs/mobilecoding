@@ -252,6 +252,25 @@ export interface SessionInputParams {
   text: string;
 }
 
+export interface SessionListParams {}
+
+export interface SessionListResult {
+  sessions: SessionMeta[];
+}
+
+export interface SessionMeta {
+  id: string;
+  name: string;
+  agent: string;
+  model?: string;
+  cwd?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActiveAt: string;
+  messageCount: number;
+}
+
 export interface RPCError {
   code: string;
   message: string;
