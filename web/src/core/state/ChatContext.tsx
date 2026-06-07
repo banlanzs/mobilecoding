@@ -668,7 +668,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const viewSession = useCallback(async (sessionId: string): Promise<void> => {
     if (!sessionId || sessionId === 'new') {
-      dispatch({ type: 'VIEW_SESSION_HISTORY', sessionId: '', messages: [], lastSeq: 0, readOnly: false });
+      if (!state.sessionId) {
+        dispatch({ type: 'VIEW_SESSION_HISTORY', sessionId: '', messages: [], lastSeq: 0, readOnly: false });
+      }
       return;
     }
     const token = localStorage.getItem('mobilecoding.token');
