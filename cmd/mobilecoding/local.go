@@ -8,17 +8,18 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
 
-// runLocal 启动 server + 直接运行 Claude（继承终端 stdin/stdout）。
-// 手机扫码后作为遥控器：看权限、中止，不共享 session。
+// runLocal 启动 server，并让 server 通过 PTY/Pipe 原生桥接 Claude CLI。
+// 手机扫码后可直接操控由 server 持有的本地 CLI 进程，同时保留权限 hook。
 func runLocal(session *Session) SwitchSignal {
 	fmt.Fprintf(os.Stderr, "\033[32m✓ 启动 %s\033[0m\n", session.Command)
 
-	// 1. 启动 server
-	serverCmd := startServer(session.Port)
+	// 1. 启动 server；server 会在 remote-control 模式下启动 native runner。
+	serverCmd := startServer(session)
 	if serverCmd == nil {
 		return ExitLoop
 	}
@@ -31,49 +32,47 @@ func runLocal(session *Session) SwitchSignal {
 	fmt.Fprintf(os.Stderr, "  服务器已启动: https://%s\n", session.ServerAddr)
 	printConnectInfo(session)
 
-	// 2. 直接启动 Claude（继承终端）
-	cliCmd := exec.Command(session.Command, session.Args...)
-	cliCmd.Stdin = os.Stdin
-	cliCmd.Stdout = os.Stdout
-	cliCmd.Stderr = os.Stderr
-
+	// 2. server 进程持有 Claude CLI。当前进程只负责转发退出信号并等待 server 退出。
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	if err := cliCmd.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "启动 %s 失败: %v\n", session.Command, err)
-		return ExitLoop
-	}
-
 	done := make(chan error, 1)
 	go func() {
-		done <- cliCmd.Wait()
+		done <- serverCmd.Wait()
 	}()
 
-	go func() {
-		for sig := range sigCh {
-			if cliCmd.Process != nil {
-				cliCmd.Process.Signal(sig)
-			}
+	select {
+	case sig := <-sigCh:
+		if serverCmd.Process != nil {
+			_ = serverCmd.Process.Signal(sig)
 		}
-	}()
-
-	// 3. 等待 Claude 退出
-	err := <-done
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\033[31m%s 退出: %v\033[0m\n", session.Command, err)
+		if err := <-done; err != nil {
+			fmt.Fprintf(os.Stderr, "\033[31mserver 退出: %v\033[0m\n", err)
+		}
+	case err := <-done:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\033[31mserver 退出: %v\033[0m\n", err)
+		}
 	}
 	return ExitLoop
 }
 
-func startServer(port string) *exec.Cmd {
+func startServer(session *Session) *exec.Cmd {
 	serverBin := findServerBinary()
 	if serverBin == "" {
 		fmt.Fprintf(os.Stderr, "找不到 mobilecoding 可执行文件，请先运行 make build\n")
 		return nil
 	}
-	cmd := exec.Command(serverBin, "-port", port, "-launch-mode", "remote-control")
+	args := []string{
+		"-port", session.Port,
+		"-launch-mode", "remote-control",
+		"-default-command", session.Command,
+	}
+	if len(session.Args) > 0 {
+		args = append(args, "-default-args", quoteArgs(session.Args))
+	}
+	cmd := exec.Command(serverBin, args...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -88,6 +87,31 @@ func stopServer(cmd *exec.Cmd) {
 		cmd.Process.Signal(syscall.SIGTERM)
 		cmd.Wait()
 	}
+}
+
+func quoteArgs(args []string) string {
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "" {
+			parts = append(parts, "''")
+			continue
+		}
+		if strings.IndexFunc(arg, func(r rune) bool { return r <= ' ' || r == '\'' || r == '"' }) == -1 {
+			parts = append(parts, arg)
+			continue
+		}
+		if !strings.Contains(arg, "\"") {
+			parts = append(parts, "\""+arg+"\"")
+			continue
+		}
+		if !strings.Contains(arg, "'") {
+			parts = append(parts, "'"+arg+"'")
+			continue
+		}
+		// config.SplitArgs 没有反斜杠转义语义；同时包含单双引号时退化为空格安全表示。
+		parts = append(parts, "\""+strings.ReplaceAll(arg, "\"", "")+"\"")
+	}
+	return strings.Join(parts, " ")
 }
 
 func waitForServer(addr string) bool {

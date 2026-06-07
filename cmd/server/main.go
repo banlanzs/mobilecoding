@@ -259,6 +259,12 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	}
 	go forwardSessionEvents(ctx, mgr, hub, logger, saveCh)
 
+	if cfg.LaunchMode == "remote-control" {
+		if err := startNativeControlSession(ctx, cfg, mgr, logger); err != nil {
+			return err
+		}
+	}
+
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,
 		Version:     version,
@@ -277,6 +283,24 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
 	return srv.ListenAndServeTLS("", "")
+}
+
+func startNativeControlSession(ctx context.Context, cfg config.Config, mgr *session.Manager, logger *logx.Logger) error {
+	cwd, _ := os.Getwd()
+	req := engine.ExecRequest{
+		Command: cfg.DefaultCmd,
+		Args:    cfg.DefaultArgs,
+		CWD:     cwd,
+		Cols:    120,
+		Rows:    32,
+	}
+	run := engine.NewNativeRunner(req.Command)
+	sid, err := mgr.Start(ctx, req, run)
+	if err != nil {
+		return fmt.Errorf("start native control session: %w", err)
+	}
+	logger.Info("startup", "native control session started: command=%s args=%v sessionId=%s cwd=%s", req.Command, req.Args, sid, req.CWD)
+	return nil
 }
 
 // installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。

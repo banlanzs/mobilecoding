@@ -33,7 +33,8 @@ export function InputBar() {
   // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
   const isStopping = state.stopping;
-  const disabled = state.status !== 'connected';
+  const disabled = state.status !== 'connected'
+    || (state.runtime.launchMode === 'remote-control' && !state.sessionId);
 
   // 键盘弹出适配
   useEffect(() => {

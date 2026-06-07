@@ -480,6 +480,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
         }
       })
       .catch(() => {});
+
+    fetch('/api/v1/session-id')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { sessionId?: string } | null) => {
+        if (!data?.sessionId) return;
+        const current = localStorage.getItem('mobilecoding.sessionId');
+        if (current !== data.sessionId) {
+          dispatch({ type: 'SESSION_STARTED', sessionId: data.sessionId });
+        }
+      })
+      .catch(() => {});
   }, [status, state.connectionMode]);
 
   // Relay 连接方法

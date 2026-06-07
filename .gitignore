@@ -35,6 +35,7 @@ coverage.out
 .claude/
 .gemini/
 .workflow/
+.ccg/
 
 #resources
 ui-template/
@@ -42,3 +43,4 @@ hello.md
 
 # 测试文件
 test.txt
+error.txt
