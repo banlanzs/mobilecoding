@@ -633,7 +633,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
       const result = await client.startSession(params);
       if (result.sessionId) {
-        dispatch({ type: 'SESSION_STARTED', sessionId: result.sessionId });
+        dispatch({
+          type: params.restart ? 'ACTIVE_SESSION_DETECTED' : 'SESSION_STARTED',
+          sessionId: result.sessionId,
+        });
       }
       return result;
     },

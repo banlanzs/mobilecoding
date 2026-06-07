@@ -16,10 +16,10 @@ test('modelFromArgs reads --model value from args', () => {
   assert.equal(modelFromArgs(['--settings', 'c:/claude/settings.json', '--model', 'claude-sonnet-4-6']), 'claude-sonnet-4-6');
 });
 
-test('argsWithModel replaces an existing --model instead of appending another one', () => {
+test('argsWithModel replaces an existing --model and keeps it after --settings', () => {
   assert.deepEqual(
     argsWithModel(['--settings', 'c:/claude/settings.json', '--model', 'old-model'], 'new-model'),
-    ['--model', 'new-model', '--settings', 'c:/claude/settings.json'],
+    ['--settings', 'c:/claude/settings.json', '--model', 'new-model'],
   );
 });
 

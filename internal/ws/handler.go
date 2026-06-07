@@ -8,18 +8,18 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/hook"
 	"github.com/banlanzs/mobilecoding/internal/logx"
-	"github.com/banlanzs/mobilecoding/internal/protocol"
 	"github.com/banlanzs/mobilecoding/internal/projection"
+	"github.com/banlanzs/mobilecoding/internal/protocol"
 	"github.com/banlanzs/mobilecoding/internal/session"
 )
 
 type Handler struct {
-	hub              *Hub
-	mgr              *session.Manager
-	logger           *logx.Logger
-	hookRegistry     *hook.Registry // 可选：用于 permission.respond
-	mu               sync.Mutex
-	pendingResumeID  string // 待使用的 Claude resume session ID
+	hub             *Hub
+	mgr             *session.Manager
+	logger          *logx.Logger
+	hookRegistry    *hook.Registry // 可选：用于 permission.respond
+	mu              sync.Mutex
+	pendingResumeID string // 待使用的 Claude resume session ID
 }
 
 // SetPendingResumeID 设置待使用的 resume session ID。
@@ -172,6 +172,7 @@ func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any
 		Args            []string `json:"args"`
 		CWD             string   `json:"cwd"`
 		ResumeSessionID string   `json:"resumeSessionId"`
+		Restart         bool     `json:"restart"`
 	}
 	if err := json.Unmarshal(env.Params, &p); err != nil {
 		return newErrorRespPtr(env.ID, protocol.ErrProtocolError, "invalid params"), nil
@@ -196,14 +197,19 @@ func (h *Handler) handleStart(ctx context.Context, env Envelope) (*Envelope, any
 		h.logger.Error("session", "new runner failed: command=%s err=%v", p.Command, err)
 		return newErrorRespPtr(env.ID, protocol.ErrEngineFailure, err.Error()), nil
 	}
-	sid, err := h.mgr.Start(ctx, req, run)
+	var sid string
+	if p.Restart {
+		sid, err = h.mgr.Restart(ctx, req, run)
+	} else {
+		sid, err = h.mgr.Start(ctx, req, run)
+	}
 	if err != nil {
-		h.logger.Error("session", "start failed: command=%s err=%v", p.Command, err)
+		h.logger.Error("session", "start failed: command=%s restart=%v err=%v", p.Command, p.Restart, err)
 		return newErrorRespPtr(env.ID, protocol.ErrConflict, err.Error()), nil
 	}
 	result, _ := json.Marshal(map[string]string{"sessionId": sid})
 	ok := true
-	h.logger.Info("session", "started: command=%s sessionId=%s resumeId=%s", p.Command, sid, p.ResumeSessionID)
+	h.logger.Info("session", "started: command=%s sessionId=%s resumeId=%s restart=%v", p.Command, sid, p.ResumeSessionID, p.Restart)
 	return &Envelope{Type: "resp", ID: env.ID, OK: &ok, Result: result}, nil
 }
 

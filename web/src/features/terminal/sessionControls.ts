@@ -23,7 +23,7 @@ export function argsWithModel(args: string[], model: string): string[] {
     next.push(args[i]);
   }
   if (model) {
-    next.unshift('--model', model);
+    next.push('--model', model);
   }
   return next;
 }

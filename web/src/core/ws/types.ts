@@ -242,6 +242,7 @@ export interface SessionStartParams {
   command: string;
   args?: string[];
   cwd?: string;
+  restart?: boolean;
 }
 
 export interface SessionStartResult {

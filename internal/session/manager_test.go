@@ -137,3 +137,30 @@ func TestManagerStopClearsSessionID(t *testing.T) {
 		t.Fatalf("SessionID() after Stop = %q, want empty", got)
 	}
 }
+
+func TestManagerRestartPreservesSessionID(t *testing.T) {
+	m := NewManager()
+	oldRun := newManualRunner()
+	sid, err := m.Start(context.Background(), ExecRequest{Command: "claude", Args: []string{"--settings", "profile.json"}}, oldRun)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	newRun := newManualRunner()
+	restartedID, err := m.Restart(context.Background(), ExecRequest{Command: "claude", Args: []string{"--settings", "profile.json", "--model", "claude-haiku-4-5"}}, newRun)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if restartedID != sid {
+		t.Fatalf("Restart session id = %q, want original %q", restartedID, sid)
+	}
+	if got := m.SessionID(); got != sid {
+		t.Fatalf("SessionID() after Restart = %q, want %q", got, sid)
+	}
+	if !oldRun.closed {
+		t.Fatalf("old runner should be closed")
+	}
+	if !newRun.started {
+		t.Fatalf("new runner should be started")
+	}
+}

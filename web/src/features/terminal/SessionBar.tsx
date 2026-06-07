@@ -1,6 +1,5 @@
 // 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useChat } from '../../core/state/ChatContext';
 import {
   argsWithModel,
@@ -28,7 +27,6 @@ interface SessionBarProps {
 }
 
 export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
-  const navigate = useNavigate();
   const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
@@ -141,11 +139,7 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     try {
       const nextCommand = state.runtime.defaultCommand || command;
       const args = argsWithModel(state.runtime.defaultArgs || [], selectedModel);
-      await sendStop();
-      const result = await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd });
-      if (result.sessionId) {
-        navigate(`/sessions/${result.sessionId}`, { replace: true });
-      }
+      await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd, restart: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : '切换模型失败');
       console.error('apply remote model failed:', err);

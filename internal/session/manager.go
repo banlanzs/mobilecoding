@@ -28,8 +28,8 @@ type Manager struct {
 	err      chan error
 	once     sync.Once
 	log      func(string, string, ...any) // component, format, args...
-	store    *Store                         // 会话元数据存储（可选）
-	metadata *SessionMeta                   // 当前活跃会话的元数据
+	store    *Store                       // 会话元数据存储（可选）
+	metadata *SessionMeta                 // 当前活跃会话的元数据
 }
 
 // NewManager 构造一个空 manager。
@@ -100,6 +100,57 @@ func (m *Manager) Start(ctx context.Context, req ExecRequest, run engine.Runner)
 	m.log("session", "runner started: command=%s sessionId=%s", req.Command, m.sid)
 	go m.forward(run)
 	return m.sid, nil
+}
+
+// Restart 替换当前 runner，但保留 mobilecoding 会话 ID 和历史归属。
+func (m *Manager) Restart(ctx context.Context, req ExecRequest, run engine.Runner) (string, error) {
+	m.mu.Lock()
+	old := m.active
+	if old == nil {
+		m.mu.Unlock()
+		return m.Start(ctx, req, run)
+	}
+	sid := m.sid
+	m.active = nil
+	m.mu.Unlock()
+
+	if err := old.Close(); err != nil {
+		return "", err
+	}
+
+	m.mu.Lock()
+	m.active = run
+	if m.metadata != nil {
+		m.metadata.Agent = req.Command
+		m.metadata.Model = extractModelFromArgs(req.Args)
+		m.metadata.CWD = req.CWD
+		m.metadata.Status = "active"
+	}
+	if m.store != nil && sid != "" {
+		if err := m.store.Update(sid, func(meta *SessionMeta) {
+			meta.Agent = req.Command
+			meta.Model = extractModelFromArgs(req.Args)
+			meta.CWD = req.CWD
+			meta.Status = "active"
+		}); err != nil {
+			m.log("session", "failed to update session metadata: %v", err)
+		}
+	}
+	m.mu.Unlock()
+
+	if err := run.Start(ctx, req); err != nil {
+		m.mu.Lock()
+		if m.active == run {
+			m.active = nil
+		}
+		m.mu.Unlock()
+		m.log("session", "runner restart FAILED: command=%s err=%v", req.Command, err)
+		return "", err
+	}
+
+	m.log("session", "runner restarted: command=%s sessionId=%s", req.Command, sid)
+	go m.forward(run)
+	return sid, nil
 }
 
 // generateSessionName 生成会话名称（基于 agent 和时间戳）。
