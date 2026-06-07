@@ -248,8 +248,8 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		logger.Warn("startup", "start hook listener: %v (continue without)", err)
 	} else {
 		defer hookListener.Close()
-		// 自动注入 hook 到 ~/.claude/settings.json
-		if err := installClaudeHook(cfg, hookURL, logger); err != nil {
+		// 自动注入 hook 到当前项目 .claude/settings.local.json
+		if err := installClaudeHook(cfg, hookURL, serverCWD, logger); err != nil {
 			logger.Warn("startup", "install Claude hook: %v (continue without)", err)
 		}
 	}
@@ -307,13 +307,16 @@ func startNativeControlSession(ctx context.Context, cfg config.Config, mgr *sess
 	return nil
 }
 
-// installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
-// settings.json 是基础配置，--settings xxx.json 会合并而非替换，所以只需注入基础文件。
-func installClaudeHook(cfg config.Config, hookURL string, logger *logx.Logger) error {
-	path, err := hook.DefaultSettingsPath()
-	if err != nil {
-		return err
+// installClaudeHook 把 mobilecoding 的权限 hook 注入到当前项目本地 settings.local.json。
+// 同时移除历史版本写入用户级 settings.json 的 mobilecoding hook，避免跨项目权限串线。
+func installClaudeHook(cfg config.Config, hookURL, cwd string, logger *logx.Logger) error {
+	if globalPath, err := hook.DefaultSettingsPath(); err == nil {
+		if err := hook.NewSettingsInjector(globalPath).RemoveInstalledHook(); err != nil {
+			logger.Warn("startup", "remove global Claude hook skipped: %v", err)
+		}
 	}
+
+	path := hook.ProjectSettingsPath(cwd)
 	inj := hook.NewSettingsInjector(path)
 	if err := inj.Install(hook.HookConfig{
 		URL:     hookURL,

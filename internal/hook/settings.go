@@ -15,7 +15,7 @@ import (
 //   - 可逆：uninstall 时把原文件还原
 //   - 安全：写入前自动备份到 settings.json.mobilecoding.bak
 type SettingsInjector struct {
-	mu        sync.Mutex
+	mu           sync.Mutex
 	settingsPath string
 	backupPath   string
 	marker       string // 在 hooks 列表中标记的 id
@@ -39,12 +39,17 @@ func DefaultSettingsPath() (string, error) {
 	return filepath.Join(home, ".claude", "settings.json"), nil
 }
 
+// ProjectSettingsPath 返回当前项目本地 Claude settings 路径。
+func ProjectSettingsPath(cwd string) string {
+	return filepath.Join(cwd, ".claude", "settings.local.json")
+}
+
 // HookConfig 描述要注入的 hook 配置。
 type HookConfig struct {
-	URL     string            // e.g. "http://127.0.0.1:8443/v1/hooks/permission-request"
-	Token   string            // Bearer token, 通过 $MOBILECODING_TOKEN 注入
-	Timeout int               // seconds, 默认 300
-	ExtraEnvVars []string      // allowedEnvVars 中的额外环境变量
+	URL          string   // e.g. "http://127.0.0.1:8443/v1/hooks/permission-request"
+	Token        string   // Bearer token, 通过 $MOBILECODING_TOKEN 注入
+	Timeout      int      // seconds, 默认 300
+	ExtraEnvVars []string // allowedEnvVars 中的额外环境变量
 }
 
 // Install 把 hook 配置写入 settings.json。
@@ -90,6 +95,31 @@ func (s *SettingsInjector) Install(cfg HookConfig) error {
 		return fmt.Errorf("write settings.json: %w", err)
 	}
 	return nil
+}
+
+// RemoveInstalledHook 只移除 mobilecoding 标记的 hook，不还原备份。
+func (s *SettingsInjector) RemoveInstalledHook() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(s.settingsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	settings := map[string]any{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+	removeHook(settings, s.marker)
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+	return os.WriteFile(s.settingsPath, out, 0o644)
 }
 
 // Uninstall 移除 hook 配置（保留文件中其他设置），并从备份还原。

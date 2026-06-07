@@ -54,6 +54,9 @@ func runClaude(extraArgs []string) {
 	}
 	args = append(args, fs.Args()...)
 
+	fmt.Fprintf(os.Stderr, "  配置文件: %s\n", displayClaudeSettings(*settings))
+	fmt.Fprintf(os.Stderr, "  模型: %s\n", displayClaudeModel(*model))
+
 	session := &Session{
 		Command:    "claude",
 		Args:       args,
@@ -64,6 +67,20 @@ func runClaude(extraArgs []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func displayClaudeSettings(settings string) string {
+	if settings == "" {
+		return "默认配置"
+	}
+	return settings
+}
+
+func displayClaudeModel(model string) string {
+	if model == "" {
+		return "默认模型"
+	}
+	return model
 }
 
 func runGeneric(command string, extraArgs []string) {

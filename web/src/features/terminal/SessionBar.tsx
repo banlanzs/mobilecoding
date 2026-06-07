@@ -1,5 +1,6 @@
 // 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useChat } from '../../core/state/ChatContext';
 import {
   argsWithModel,
@@ -27,6 +28,7 @@ interface SessionBarProps {
 }
 
 export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
+  const navigate = useNavigate();
   const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
@@ -125,6 +127,28 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start');
       console.error('start session failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyRemoteModel = async () => {
+    if (loading || state.stopping) return;
+    if (!confirm('切换模型需要重启当前会话，确认继续吗？')) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const nextCommand = state.runtime.defaultCommand || command;
+      const args = argsWithModel(state.runtime.defaultArgs || [], selectedModel);
+      await sendStop();
+      const result = await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd });
+      if (result.sessionId) {
+        navigate(`/sessions/${result.sessionId}`, { replace: true });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换模型失败');
+      console.error('apply remote model failed:', err);
     } finally {
       setLoading(false);
     }
@@ -253,9 +277,29 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
         {contextMeter}
         <div className="session-actions">
           {state.runtime.launchMode === 'remote-control' && command === 'claude' && (
-            <span className="session-active" title="Windows 遥控模式使用托管 Claude 会话，当前会话不支持 /model 热切换">
-              模型由 mc claude 启动参数决定
-            </span>
+            <>
+              <select
+                className="sel-model"
+                value={selectedModel}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={loading || state.stopping}
+                title="选择 Claude 模型（应用后会重启当前托管会话）"
+              >
+                {models.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary"
+                onClick={handleApplyRemoteModel}
+                disabled={loading || state.stopping}
+                title="重启当前托管会话并应用模型"
+              >
+                {loading ? '应用中…' : '应用模型'}
+              </button>
+            </>
           )}
           {onToggleFiles && (
             <button
