@@ -34,7 +34,7 @@ type ClaudeRunner struct {
 	req       ExecRequest
 	logWindow *LogWindow
 
-	resumeSessionID string // Claude 内部 session id，用于 --resume
+	resumeSessionID string         // Claude 内部 session id，用于 --resume
 	currentStdin    io.WriteCloser // 当前运行进程的 stdin（用于权限应答）
 	wg              sync.WaitGroup // 追踪活跃 goroutines
 }
@@ -48,7 +48,7 @@ func NewClaudeRunner() *ClaudeRunner {
 	}
 }
 
-func (r *ClaudeRunner) SessionID() string              { return r.sessionID }
+func (r *ClaudeRunner) SessionID() string               { return r.sessionID }
 func (r *ClaudeRunner) Events() <-chan Event            { return r.events }
 func (r *ClaudeRunner) Errors() <-chan error            { return r.errors }
 func (r *ClaudeRunner) Done() <-chan struct{}           { return r.done }
@@ -84,31 +84,12 @@ func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
 // 多轮对话通过 --resume <session_id> 保持上下文。
 // prompt 参数保留仅为向后兼容（实际不再使用 argv 传消息）。
 func (r *ClaudeRunner) runClaude(prompt string) error {
-	settingsEnv := extractSettingsEnv(r.req.Args)
-	filteredArgs := filterSettingsArgs(r.req.Args)
-
-	// 使用 --input-format stream-json 让 Claude 从 stdin 读 JSON 行：
-	//   {"type":"user","message":{"role":"user","content":"..."}}
-	// 这样多行/含特殊字符的消息不会被 Windows CreateProcess 命令行截断。
-	args := []string{
-		"--print",
-		"--verbose",
-		"--output-format", "stream-json",
-		"--input-format", "stream-json",
-		"--permission-prompt-tool", "stdio",
-	}
-
 	// 多轮对话：续接上次 session
 	r.mu.Lock()
 	sid := r.resumeSessionID
 	r.mu.Unlock()
-	if sid != "" {
-		args = append(args, "--resume", sid)
-	}
-
-	args = append(args, filteredArgs...)
+	args := claudeProcessArgs(r.req.Args, sid)
 	_ = prompt // prompt 不再通过 argv 传递，改由 Write 写 stdin
-
 
 	command := r.req.Command
 	if runtime.GOOS == "windows" {
@@ -118,13 +99,7 @@ func (r *ClaudeRunner) runClaude(prompt string) error {
 	if r.req.CWD != "" {
 		cmd.Dir = r.req.CWD
 	}
-	cmd.Env = os.Environ()
-	for k, v := range settingsEnv {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
-	if len(r.req.Env) > 0 {
-		cmd.Env = append(cmd.Env, r.req.Env...)
-	}
+	cmd.Env = claudeProcessEnv(os.Environ(), r.req.Env, hasSettingsArg(r.req.Args))
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -225,7 +200,6 @@ func (r *ClaudeRunner) killProcess() {
 		cmd.Process.Kill()
 	}
 }
-
 
 // SendToStdin 写入当前运行进程的 stdin（不杀进程）。
 // 用于权限应答、--permission-prompt-tool stdio 等中间交互。
@@ -391,53 +365,48 @@ func resolveWindowsCommand(cmd string) string {
 	return cmd
 }
 
-func extractSettingsEnv(args []string) map[string]string {
-	settingsPath := ""
-	for i, arg := range args {
-		if arg == "--settings" && i+1 < len(args) {
-			settingsPath = args[i+1]
-			break
-		}
+func claudeProcessArgs(reqArgs []string, resumeSessionID string) []string {
+	// 使用 --input-format stream-json 让 Claude 从 stdin 读 JSON 行：
+	//   {"type":"user","message":{"role":"user","content":"..."}}
+	// 这样多行/含特殊字符的消息不会被 Windows CreateProcess 命令行截断。
+	args := []string{
+		"--print",
+		"--verbose",
+		"--output-format", "stream-json",
+		"--input-format", "stream-json",
+		"--permission-prompt-tool", "stdio",
 	}
-	if settingsPath == "" {
-		return nil
+	if resumeSessionID != "" {
+		args = append(args, "--resume", resumeSessionID)
 	}
-
-	settingsPath = os.ExpandEnv(settingsPath)
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		return nil
-	}
-
-	var settings struct {
-		Env map[string]string `json:"env"`
-	}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil
-	}
-
-	for k, v := range settings.Env {
-		settings.Env[k] = os.ExpandEnv(v)
-	}
-	return settings.Env
+	return append(args, reqArgs...)
 }
 
-// filterSettingsArgs 从参数列表中移除 --settings 参数。
-func filterSettingsArgs(args []string) []string {
-	var result []string
-	skip := false
-	for _, arg := range args {
-		if skip {
-			skip = false
+func claudeProcessEnv(baseEnv, reqEnv []string, isolateSettings bool) []string {
+	out := make([]string, 0, len(baseEnv)+len(reqEnv))
+	for _, kv := range baseEnv {
+		if isolateSettings && isClaudeProviderEnv(kv) {
 			continue
 		}
-		if arg == "--settings" {
-			skip = true
-			continue
-		}
-		result = append(result, arg)
+		out = append(out, kv)
 	}
-	return result
+	return append(out, reqEnv...)
+}
+
+func hasSettingsArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--settings" || strings.HasPrefix(arg, "--settings=") {
+			return true
+		}
+	}
+	return false
+}
+
+func isClaudeProviderEnv(kv string) bool {
+	name, _, _ := strings.Cut(kv, "=")
+	return strings.HasPrefix(name, "ANTHROPIC_") ||
+		strings.HasPrefix(name, "CLAUDE_CODE_USE_") ||
+		name == "CLAUDE_CODE_OAUTH_TOKEN"
 }
 
 // formatStreamJSONForLog 将 Claude stream-json 解析为可读文本。
