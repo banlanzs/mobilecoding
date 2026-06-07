@@ -11,8 +11,6 @@ const ext = platform === 'win32' ? '.exe' : '';
 // 尝试多个可能的路径
 const possiblePaths = [
   path.join(__dirname, '..', 'dist', `mc${ext}`),
-  path.join(__dirname, '..', 'dist', `mobilecoding-new${ext}`),
-  path.join(__dirname, `mc${ext}`),
 ];
 
 let binary = null;
@@ -24,7 +22,8 @@ for (const p of possiblePaths) {
 }
 
 if (!binary) {
-  console.error('mc binary not found. Please run: npm run build');
+  console.error('mc binary not found.');
+  console.error('This binary is only available via local build: make build');
   process.exit(1);
 }
 
