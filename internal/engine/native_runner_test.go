@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-func TestNativeRunnerUsesManagedClaudeRunnerOnWindows(t *testing.T) {
+func TestNativeRunnerUsesInteractivePipeRunnerOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
-		t.Skip("Windows PipeRunner 才会触发 Claude 非 TTY stdin 退出问题")
+		t.Skip("Windows remote-control 才需要 PipeRunner 交互式 stdin/stdout")
 	}
 
 	r := NewNativeRunner("claude")
-	if _, ok := r.(*ClaudeRunner); !ok {
-		t.Fatalf("NewNativeRunner(claude) = %T, want *ClaudeRunner", r)
+	if _, ok := r.(*PipeRunner); !ok {
+		t.Fatalf("NewNativeRunner(claude) = %T, want *PipeRunner", r)
 	}
 }

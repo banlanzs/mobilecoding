@@ -27,3 +27,14 @@ func TestRegistryRejectsEmpty(t *testing.T) {
 		t.Errorf("NewRunner(\"\") should fail")
 	}
 }
+
+func TestNewNativeRunnerUsesInteractivePipeRunnerForClaudeOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific regression: mc claude remote-control must use a real interactive PipeRunner")
+	}
+
+	run := NewNativeRunner("claude")
+	if _, ok := run.(*PipeRunner); !ok {
+		t.Fatalf("NewNativeRunner(claude) = %T, want *PipeRunner for interactive remote-control", run)
+	}
+}
