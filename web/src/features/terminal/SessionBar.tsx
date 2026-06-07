@@ -26,10 +26,30 @@ interface SessionBarProps {
   showFiles?: boolean;
 }
 
-export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps) {
+function modelFromArgs(args: string[]): string {
+  const idx = args.indexOf('--model');
+  return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : '';
+}
+
+function argsWithModel(args: string[], model: string): string[] {
+  const next: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--model') {
+      i++;
+      continue;
+    }
+    next.push(args[i]);
+  }
+  if (model) {
+    next.unshift('--model', model);
+  }
+  return next;
+}
+
+export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
   const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,9 +70,11 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
     }
   }, [state.runtime.defaultCommand, state.selectedCommand]);
 
+  const selectedModel = model ?? modelFromArgs(state.runtime.defaultArgs || []);
+
   useEffect(() => {
     setError(null);
-  }, [command, model]);
+  }, [command, selectedModel]);
 
   // 拉取模型列表（可指定 settings 路径）
   const fetchModels = useCallback(async (settingsPath?: string) => {
@@ -113,8 +135,8 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
       setSelectedCommand(command);
       let args: string[] = [];
 
-      if (model) {
-        args.push('--model', model);
+      if (selectedModel) {
+        args.push('--model', selectedModel);
       }
 
       if (command === 'claude' && selectedSetting) {
@@ -127,6 +149,25 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start');
       console.error('start session failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyRemoteModel = async () => {
+    if (loading || state.stopping) return;
+    if (!confirm('切换模型需要重启当前会话，确认继续吗？')) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const nextCommand = state.runtime.defaultCommand || command;
+      const args = argsWithModel(state.runtime.defaultArgs || [], selectedModel);
+      await sendStop();
+      await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换模型失败');
+      console.error('apply remote model failed:', err);
     } finally {
       setLoading(false);
     }
@@ -194,6 +235,22 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
     </div>
   ) : null;
 
+  if (state.readOnly) {
+    return (
+      <div className="session-bar session-bar-active">
+        {onBack && (
+          <button className="btn-back" onClick={onBack} title="返回会话列表">
+            ←
+          </button>
+        )}
+        {error && <div className="session-error">{error}</div>}
+        <span className="session-active" title={currentSessionId || state.viewedSessionId || ''}>
+          历史会话，只读
+        </span>
+      </div>
+    );
+  }
+
   // Relay 模式：指示 + 断开
   if (state.connectionMode === 'relay') {
     return (
@@ -224,7 +281,7 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
 
   // 有活跃会话：会话信息 + 上下文进度 + Stop
   if (state.sessionId) {
-    const activeLabel = `${command}${model ? ` (${model})` : ''} — active`;
+    const activeLabel = `${command}${selectedModel ? ` (${selectedModel})` : ''} — active`;
     return (
       <div className="session-bar session-bar-active">
         {onBack && (
@@ -238,6 +295,31 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
         </span>
         {contextMeter}
         <div className="session-actions">
+          {state.runtime.launchMode === 'remote-control' && command === 'claude' && (
+            <>
+              <select
+                className="sel-model"
+                value={selectedModel}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={loading || state.stopping}
+                title="选择 Claude 模型（应用后会重启当前会话）"
+              >
+                {models.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary"
+                onClick={handleApplyRemoteModel}
+                disabled={loading || state.stopping}
+                title="重启当前会话并应用模型"
+              >
+                {loading ? '应用中…' : '应用模型'}
+              </button>
+            </>
+          )}
           {onToggleFiles && (
             <button
               className={`btn-files${showFiles ? ' active' : ''}`}
@@ -301,7 +383,7 @@ export function SessionBar({ onBack, onToggleFiles, showFiles }: SessionBarProps
       {command === 'claude' && (
         <select
           className="sel-model"
-          value={model}
+          value={selectedModel}
           onChange={(e) => setModel(e.target.value)}
           disabled={loading}
           title="选择 AI 模型"

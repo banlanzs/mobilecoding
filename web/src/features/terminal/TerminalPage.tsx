@@ -1,5 +1,5 @@
 // 终端主页面 — mobile-first 全屏对话界面
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChat } from '../../core/state/ChatContext';
 import { ConnectionBar } from './ConnectionBar';
@@ -15,8 +15,14 @@ import './terminal.css';
 export function TerminalPage() {
   const { id: sessionId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state } = useChat();
+  const { state, viewSession } = useChat();
   const [showGitFiles, setShowGitFiles] = useState(false);
+
+  useEffect(() => {
+    if (sessionId) {
+      viewSession(sessionId);
+    }
+  }, [sessionId, viewSession]);
 
   // Relay 模式或有 token 时显示完整界面
   const hasToken = !!localStorage.getItem('mobilecoding.token');
@@ -40,7 +46,7 @@ export function TerminalPage() {
   }
 
   // 无消息且无活跃 session 时显示引导页
-  const showOnboarding = state.messages.length === 0 && !state.sessionId;
+  const showOnboarding = state.messages.length === 0 && !state.viewedSessionId;
 
   const handleBack = () => {
     navigate('/sessions');
