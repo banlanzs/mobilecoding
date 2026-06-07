@@ -22,6 +22,7 @@ import type {
   PermissionRequestEvent,
   RuntimeConfig,
 } from '../ws/types';
+import { requireActiveSessionId } from '../../features/terminal/sessionControls';
 
 const MAX_MESSAGES = 500;
 const STORED_MESSAGES_KEY = 'mobilecoding.messages';
@@ -460,6 +461,20 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
   const relayClientRef = useRef<RelayClient | null>(null);
 
+  const refreshActiveSessionId = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/v1/session-id');
+      if (!res.ok) return null;
+      const data = await res.json() as { sessionId?: string };
+      if (!data.sessionId) return null;
+      localStorage.setItem('mobilecoding.sessionId', data.sessionId);
+      dispatch({ type: 'ACTIVE_SESSION_DETECTED', sessionId: data.sessionId });
+      return data.sessionId;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // 同步连接状态
   useEffect(() => {
     dispatch({ type: 'STATUS_CHANGED', status });
@@ -525,15 +540,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       })
       .catch(() => {});
 
-    fetch('/api/v1/session-id')
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: { sessionId?: string } | null) => {
-        if (!data?.sessionId) return;
-        localStorage.setItem('mobilecoding.sessionId', data.sessionId);
-        dispatch({ type: 'ACTIVE_SESSION_DETECTED', sessionId: data.sessionId });
-      })
-      .catch(() => {});
-  }, [status, state.connectionMode]);
+    refreshActiveSessionId();
+  }, [status, state.connectionMode, refreshActiveSessionId]);
 
   // Relay 连接方法
   const connectRelay = useCallback((config: RelayConfig) => {
@@ -619,7 +627,28 @@ export function ChatProvider({ children }: PropsWithChildren) {
       if (state.readOnly) {
         throw new Error('历史会话只读，不能发送消息');
       }
-      const sid = state.sessionId || 'remote_control';
+
+      let sid = state.sessionId;
+      if (state.connectionMode === 'direct' && runtimeRef.current.launchMode === 'remote-control' && !sid) {
+        sid = await refreshActiveSessionId();
+      }
+
+      if (!sid) {
+        let err: Error;
+        if (runtimeRef.current.launchMode === 'remote-control') {
+          try {
+            requireActiveSessionId(sid);
+            err = new Error('桌面 CLI 未就绪，请确认 mc claude 会话仍在运行');
+          } catch (e) {
+            err = e instanceof Error ? e : new Error(String(e));
+          }
+        } else {
+          err = new Error('请先启动会话');
+        }
+        dispatch({ type: 'ERROR', error: err.message });
+        throw err;
+      }
+
       dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
 
       if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -637,7 +666,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         }
       }
     },
-    [client, state.sessionId, state.connectionMode, state.readOnly]
+    [client, refreshActiveSessionId, state.sessionId, state.connectionMode, state.readOnly]
   );
 
   const sendStop = useCallback(async (): Promise<void> => {

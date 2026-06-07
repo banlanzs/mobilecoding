@@ -65,3 +65,11 @@ test('requireActiveSessionId rejects placeholder-free remote-control input witho
 test('requireActiveSessionId returns the real active session id', () => {
   assert.equal(requireActiveSessionId('sess_real_123'), 'sess_real_123');
 });
+
+test('requireActiveSessionId never fabricates remote_control placeholder session id', () => {
+  assert.notEqual(requireActiveSessionId('sess_real_456'), 'remote_control');
+  assert.throws(
+    () => requireActiveSessionId(undefined),
+    /桌面 CLI 未就绪/,
+  );
+});

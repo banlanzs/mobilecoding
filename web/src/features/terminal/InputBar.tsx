@@ -33,9 +33,10 @@ export function InputBar() {
   // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
   const isStopping = state.stopping;
+  const remoteCliNotReady = state.runtime.launchMode === 'remote-control' && !state.sessionId;
   const disabled = state.readOnly
     || state.status !== 'connected'
-    || (state.runtime.launchMode === 'remote-control' && !state.sessionId);
+    || remoteCliNotReady;
 
   // 键盘弹出适配
   useEffect(() => {
@@ -122,6 +123,8 @@ export function InputBar() {
 
   const placeholder = state.readOnly
     ? '历史会话只读'
+    : remoteCliNotReady
+    ? '桌面 CLI 未就绪，请确认 mc claude 会话仍在运行'
     : disabled
     ? '未连接...'
     : isActive
