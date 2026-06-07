@@ -6,6 +6,8 @@ import {
   concreteModelOptions,
   modelFromArgs,
   modelSwitchCommand,
+  sessionIdForDirectSend,
+  shouldRefreshRemoteControlSession,
   requireActiveSessionId,
 } from './sessionControls.ts';
 
@@ -71,5 +73,37 @@ test('requireActiveSessionId never fabricates remote_control placeholder session
   assert.throws(
     () => requireActiveSessionId(undefined),
     /桌面 CLI 未就绪/,
+  );
+});
+
+test('shouldRefreshRemoteControlSession only refreshes direct remote-control sends', () => {
+  assert.equal(shouldRefreshRemoteControlSession('direct', 'remote-control'), true);
+  assert.equal(shouldRefreshRemoteControlSession('relay', 'remote-control'), false);
+  assert.equal(shouldRefreshRemoteControlSession('direct', 'managed'), false);
+});
+
+test('sessionIdForDirectSend requires fresh remote-control session instead of stale cached session', () => {
+  assert.equal(
+    sessionIdForDirectSend({
+      launchMode: 'remote-control',
+      currentSessionId: 'sess_stale_123',
+      refreshedSessionId: 'sess_real_456',
+    }),
+    'sess_real_456',
+  );
+  assert.throws(
+    () => sessionIdForDirectSend({
+      launchMode: 'remote-control',
+      currentSessionId: 'sess_stale_123',
+      refreshedSessionId: null,
+    }),
+    /桌面 CLI 未就绪/,
+  );
+});
+
+test('sessionIdForDirectSend reports managed mode without fabricating session', () => {
+  assert.throws(
+    () => sessionIdForDirectSend({ launchMode: 'managed', currentSessionId: null }),
+    /请先启动会话/,
   );
 });

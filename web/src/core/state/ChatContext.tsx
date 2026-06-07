@@ -22,7 +22,10 @@ import type {
   PermissionRequestEvent,
   RuntimeConfig,
 } from '../ws/types';
-import { requireActiveSessionId } from '../../features/terminal/sessionControls';
+import {
+  sessionIdForDirectSend,
+  shouldRefreshRemoteControlSession,
+} from '../../features/terminal/sessionControls';
 
 const MAX_MESSAGES = 500;
 const STORED_MESSAGES_KEY = 'mobilecoding.messages';
@@ -628,42 +631,45 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw new Error('历史会话只读，不能发送消息');
       }
 
-      let sid = state.sessionId;
-      if (state.connectionMode === 'direct' && runtimeRef.current.launchMode === 'remote-control' && !sid) {
-        sid = await refreshActiveSessionId();
+      if (state.connectionMode === 'relay' && relayClientRef.current) {
+        dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: state.sessionId || 'relay_session' });
+        relayClientRef.current.sendText(text);
+        return;
       }
 
-      if (!sid) {
-        let err: Error;
-        if (runtimeRef.current.launchMode === 'remote-control') {
-          try {
-            requireActiveSessionId(sid);
-            err = new Error('桌面 CLI 未就绪，请确认 mc claude 会话仍在运行');
-          } catch (e) {
-            err = e instanceof Error ? e : new Error(String(e));
-          }
-        } else {
-          err = new Error('请先启动会话');
+      const launchMode = runtimeRef.current.launchMode || 'managed';
+      let refreshedSessionId: string | null | undefined;
+      if (shouldRefreshRemoteControlSession(state.connectionMode, launchMode)) {
+        refreshedSessionId = await refreshActiveSessionId();
+      }
+
+      let sid: string;
+      try {
+        sid = sessionIdForDirectSend({
+          launchMode,
+          currentSessionId: state.sessionId,
+          refreshedSessionId,
+        });
+      } catch (err) {
+        if (launchMode === 'remote-control') {
+          dispatch({ type: 'SESSION_STOPPED' });
         }
-        dispatch({ type: 'ERROR', error: err.message });
-        throw err;
+        const error = err instanceof Error ? err : new Error(String(err));
+        dispatch({ type: 'ERROR', error: error.message });
+        throw error;
       }
 
       dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
 
-      if (state.connectionMode === 'relay' && relayClientRef.current) {
-        relayClientRef.current.sendText(text);
-      } else {
-        try {
-          await client.sendInput(text);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('no active runner') || msg.includes('engine_failure') || msg.includes('context canceled')) {
-            dispatch({ type: 'SESSION_STOPPED' });
-            dispatch({ type: 'ERROR', error: '会话已断开，请重新启动' });
-          }
-          throw err;
+      try {
+        await client.sendInput(text);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('no active runner') || msg.includes('engine_failure') || msg.includes('context canceled')) {
+          dispatch({ type: 'SESSION_STOPPED' });
+          dispatch({ type: 'ERROR', error: '会话已断开，请重新启动' });
         }
+        throw err;
       }
     },
     [client, refreshActiveSessionId, state.sessionId, state.connectionMode, state.readOnly]

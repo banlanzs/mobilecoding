@@ -3,6 +3,9 @@ export interface ModelOption {
   label: string;
 }
 
+type ConnectionMode = 'direct' | 'relay';
+type LaunchMode = 'managed' | 'remote-control';
+
 export function modelFromArgs(args: string[]): string {
   const idx = args.indexOf('--model');
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : '';
@@ -40,4 +43,26 @@ export function requireActiveSessionId(sessionId: string | null | undefined): st
     throw new Error('桌面 CLI 未就绪，请确认 mc claude 会话仍在运行');
   }
   return sessionId;
+}
+
+export function shouldRefreshRemoteControlSession(connectionMode: ConnectionMode, launchMode: LaunchMode): boolean {
+  return connectionMode === 'direct' && launchMode === 'remote-control';
+}
+
+export function sessionIdForDirectSend({
+  launchMode,
+  currentSessionId,
+  refreshedSessionId,
+}: {
+  launchMode: LaunchMode;
+  currentSessionId: string | null | undefined;
+  refreshedSessionId?: string | null;
+}): string {
+  if (launchMode === 'remote-control') {
+    return requireActiveSessionId(refreshedSessionId);
+  }
+  if (!currentSessionId) {
+    throw new Error('请先启动会话');
+  }
+  return currentSessionId;
 }
