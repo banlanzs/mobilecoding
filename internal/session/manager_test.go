@@ -76,7 +76,7 @@ func (r *manualRunner) Close() error {
 
 func TestManagerStartAndCollect(t *testing.T) {
 	m := NewManager()
-	run := newFakeRunner()
+	run := newManualRunner()
 	sid, err := m.Start(context.Background(), ExecRequest{Command: "x"}, run)
 	if err != nil {
 		t.Fatalf("Start: %v", err)

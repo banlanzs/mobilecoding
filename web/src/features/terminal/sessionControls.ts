@@ -28,18 +28,6 @@ export function argsWithModel(args: string[], model: string): string[] {
   return next;
 }
 
-export function concreteModelOptions(models: ModelOption[]): ModelOption[] {
-  return models.filter((model) => model.value.trim() !== '');
-}
-
-export function modelSwitchCommand(model: string): string {
-  const trimmed = model.trim();
-  if (!trimmed) {
-    throw new Error('请选择具体模型');
-  }
-  return `/model ${trimmed}`;
-}
-
 export function requireActiveSessionId(sessionId: string | null | undefined): string {
   if (!sessionId) {
     throw new Error('桌面 CLI 未就绪，请确认 mc claude 会话仍在运行');

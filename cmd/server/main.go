@@ -223,6 +223,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	wsHandler := ws.NewHandler(hub, mgr, logger)
 
 	// 权限 hook：Claude Code 的 PermissionRequest HTTP hook 端点
+	serverCWD, _ := os.Getwd()
 	hookRegistry := hook.NewRegistry()
 	hookHandler := hook.NewHandler(hookRegistry, func(ev hook.Event) {
 		// 把权限请求包装成 projection.Event 通过 hub 广播给 WS 客户端
@@ -234,6 +235,9 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		}
 		hub.Broadcast(env)
 	})
+	if cfg.LaunchMode == "remote-control" {
+		hookHandler.AllowedCWD = serverCWD
+	}
 	hookHandler.Log = func(format string, args ...any) { logger.Info("hook-http", format, args...) }
 	wsHandler.SetHookRegistry(hookRegistry)
 

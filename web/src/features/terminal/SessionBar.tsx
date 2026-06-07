@@ -1,11 +1,9 @@
 // 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 import {
   argsWithModel,
-  concreteModelOptions,
   modelFromArgs,
-  modelSwitchCommand,
   type ModelOption,
 } from './sessionControls';
 
@@ -29,7 +27,7 @@ interface SessionBarProps {
 }
 
 export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
-  const { state, sendStart, sendStop, sendInput, setSelectedCommand } = useChat();
+  const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,13 +51,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   }, [state.runtime.defaultCommand, state.selectedCommand]);
 
   const selectedModel = model ?? modelFromArgs(state.runtime.defaultArgs || []);
-  const hotSwitchModels = useMemo(() => concreteModelOptions(models), [models]);
-
-  useEffect(() => {
-    if (state.runtime.launchMode !== 'remote-control') return;
-    if (selectedModel || hotSwitchModels.length === 0) return;
-    setModel(hotSwitchModels[0].value);
-  }, [state.runtime.launchMode, selectedModel, hotSwitchModels]);
 
   useEffect(() => {
     setError(null);
@@ -134,21 +125,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start');
       console.error('start session failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApplyRemoteModel = async () => {
-    if (loading || state.stopping || !selectedModel || hotSwitchModels.length === 0) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      await sendInput(modelSwitchCommand(selectedModel));
-    } catch (err) {
-      setError('切换模型失败');
-      console.error('apply remote model failed:', err);
     } finally {
       setLoading(false);
     }
@@ -277,29 +253,9 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
         {contextMeter}
         <div className="session-actions">
           {state.runtime.launchMode === 'remote-control' && command === 'claude' && (
-            <>
-              <select
-                className="sel-model"
-                value={selectedModel}
-                onChange={(e) => setModel(e.target.value)}
-                disabled={loading || state.stopping || hotSwitchModels.length === 0}
-                title="选择 Claude 模型"
-              >
-                {hotSwitchModels.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn btn-primary"
-                onClick={handleApplyRemoteModel}
-                disabled={loading || state.stopping || !selectedModel || hotSwitchModels.length === 0}
-                title="通过 Claude Code /model 热切换当前会话模型"
-              >
-                {loading ? '切换中…' : '切换模型'}
-              </button>
-            </>
+            <span className="session-active" title="Windows 遥控模式使用托管 Claude 会话，当前会话不支持 /model 热切换">
+              模型由 mc claude 启动参数决定
+            </span>
           )}
           {onToggleFiles && (
             <button

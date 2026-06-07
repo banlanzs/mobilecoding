@@ -9,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,7 +42,7 @@ type Response struct {
 }
 
 type HookSpecificOutput struct {
-	HookEventName string  `json:"hookEventName"`
+	HookEventName string    `json:"hookEventName"`
 	Decision      Decision2 `json:"decision"`
 }
 
@@ -134,6 +137,7 @@ type Handler struct {
 	Broadcast     func(Event) // 由 main.go 注入：把事件广播到所有 WS 订阅者
 	Timeout       time.Duration
 	DenyOnTimeout bool
+	AllowedCWD    string                           // 非空时，只接受来自该工作目录的 Claude hook 请求
 	Log           func(format string, args ...any) // 可选日志回调
 }
 
@@ -167,6 +171,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ToolName == "" {
 		http.Error(w, "tool_name is required", http.StatusBadRequest)
+		return
+	}
+	if !cwdAllowed(req.CWD, h.AllowedCWD) {
+		h.logf("hook ignored: cwd=%q allowed=%q", req.CWD, h.AllowedCWD)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -241,6 +250,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func cwdAllowed(cwd, allowed string) bool {
+	if allowed == "" {
+		return true
+	}
+	if cwd == "" {
+		return false
+	}
+	got := filepath.Clean(cwd)
+	want := filepath.Clean(allowed)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(got, want)
+	}
+	return got == want
 }
 
 // summarizeToolInput 为常见工具生成人类可读摘要。

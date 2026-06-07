@@ -5,11 +5,15 @@ import (
 	"runtime"
 )
 
-// NewNativeRunner 返回原生命令桥接 runner。
-// remote-control 必须是真实交互式 CLI：Windows 使用 PipeRunner，非 Windows 使用 PtyRunner。
-// 这里刻意绕过 ClaudeRunner 的 --print/stream-json 托管模式，因为它不支持交互式 /model 热切换。
+// NewNativeRunner 返回 remote-control runner。
+// Windows 上 Claude Code 交互式 CLI 需要真实终端，普通 stdin/stdout pipe 会启动后退出；
+// 因此 Windows + Claude 继续使用 ClaudeRunner 的托管 stream-json 模式。
 func NewNativeRunner(command string) Runner {
 	if runtime.GOOS == "windows" {
+		if cfg, ok := agentRegistry[command]; ok && cfg.Runner == "claude" {
+			log.Printf("engine: selected managed ClaudeRunner (Windows remote-control) for command=%s", command)
+			return NewClaudeRunner()
+		}
 		log.Printf("engine: selected native PipeRunner (Windows remote-control) for command=%s", command)
 		return NewPipeRunner()
 	}

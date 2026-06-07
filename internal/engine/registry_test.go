@@ -28,13 +28,13 @@ func TestRegistryRejectsEmpty(t *testing.T) {
 	}
 }
 
-func TestNewNativeRunnerUsesInteractivePipeRunnerForClaudeOnWindows(t *testing.T) {
+func TestNewNativeRunnerUsesManagedClaudeRunnerForClaudeOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
-		t.Skip("Windows-specific regression: mc claude remote-control must use a real interactive PipeRunner")
+		t.Skip("Windows-specific regression: Claude Code exits under ordinary stdin/stdout pipes")
 	}
 
 	run := NewNativeRunner("claude")
-	if _, ok := run.(*PipeRunner); !ok {
-		t.Fatalf("NewNativeRunner(claude) = %T, want *PipeRunner for interactive remote-control", run)
+	if _, ok := run.(*ClaudeRunner); !ok {
+		t.Fatalf("NewNativeRunner(claude) = %T, want *ClaudeRunner on Windows", run)
 	}
 }
