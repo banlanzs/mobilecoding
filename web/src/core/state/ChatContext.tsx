@@ -478,6 +478,20 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  const refreshRuntimeConfig = useCallback(async (): Promise<RuntimeConfig> => {
+    try {
+      const res = await fetch('/version');
+      if (!res.ok) return runtimeRef.current;
+      const data = await res.json() as { runtime?: RuntimeConfig };
+      if (!data.runtime) return runtimeRef.current;
+      runtimeRef.current = data.runtime;
+      dispatch({ type: 'RUNTIME_LOADED', runtime: data.runtime });
+      return data.runtime;
+    } catch {
+      return runtimeRef.current;
+    }
+  }, []);
+
   // 同步连接状态
   useEffect(() => {
     dispatch({ type: 'STATUS_CHANGED', status });
@@ -533,18 +547,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
-    fetch('/version')
-      .then((r) => r.json())
-      .then((data: { runtime?: RuntimeConfig }) => {
-        if (data.runtime) {
-          runtimeRef.current = data.runtime;
-          dispatch({ type: 'RUNTIME_LOADED', runtime: data.runtime });
-        }
-      })
-      .catch(() => {});
-
+    refreshRuntimeConfig();
     refreshActiveSessionId();
-  }, [status, state.connectionMode, refreshActiveSessionId]);
+  }, [status, state.connectionMode, refreshActiveSessionId, refreshRuntimeConfig]);
 
   // Relay 连接方法
   const connectRelay = useCallback((config: RelayConfig) => {
@@ -637,7 +642,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      const launchMode = runtimeRef.current.launchMode || 'managed';
+      const runtime = runtimeRef.current.defaultCommand
+        ? runtimeRef.current
+        : await refreshRuntimeConfig();
+      const launchMode = runtime.launchMode || 'managed';
       let refreshedSessionId: string | null | undefined;
       if (shouldRefreshRemoteControlSession(state.connectionMode, launchMode)) {
         refreshedSessionId = await refreshActiveSessionId();
@@ -672,7 +680,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw err;
       }
     },
-    [client, refreshActiveSessionId, state.sessionId, state.connectionMode, state.readOnly]
+    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.readOnly]
   );
 
   const sendStop = useCallback(async (): Promise<void> => {

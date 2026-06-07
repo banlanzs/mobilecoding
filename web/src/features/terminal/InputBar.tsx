@@ -1,6 +1,7 @@
 // 底部输入栏：快捷指令条 + textarea + 圆形发送/停止按钮
 import { useRef, useState, useEffect } from 'react';
 import { useChat } from '../../core/state/ChatContext';
+import { isRemoteCliNotReady } from './sessionControls';
 
 // 快捷指令：点击填入输入框（不直接发送，保留用户编辑/确认）
 const QUICK_CHIPS = ['/clear', 'git status', 'git diff', 'npm test'];
@@ -33,7 +34,7 @@ export function InputBar() {
   // 早期实现仅用 thinking/agentState 判断，会在收到 text_delta 后过早回到"发送"按钮。
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
   const isStopping = state.stopping;
-  const remoteCliNotReady = state.runtime.launchMode === 'remote-control' && !state.sessionId;
+  const remoteCliNotReady = isRemoteCliNotReady(state.connectionMode, state.runtime.launchMode, state.sessionId);
   const disabled = state.readOnly
     || state.status !== 'connected'
     || remoteCliNotReady;

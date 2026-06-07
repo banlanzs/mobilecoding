@@ -5,6 +5,7 @@ export interface ModelOption {
 
 type ConnectionMode = 'direct' | 'relay';
 type LaunchMode = 'managed' | 'remote-control';
+type MaybeLaunchMode = LaunchMode | undefined;
 
 export function modelFromArgs(args: string[]): string {
   const idx = args.indexOf('--model');
@@ -47,6 +48,14 @@ export function requireActiveSessionId(sessionId: string | null | undefined): st
 
 export function shouldRefreshRemoteControlSession(connectionMode: ConnectionMode, launchMode: LaunchMode): boolean {
   return connectionMode === 'direct' && launchMode === 'remote-control';
+}
+
+export function isRemoteCliNotReady(
+  connectionMode: ConnectionMode,
+  launchMode: MaybeLaunchMode,
+  sessionId: string | null,
+): boolean {
+  return connectionMode === 'direct' && launchMode === 'remote-control' && !sessionId;
 }
 
 export function sessionIdForDirectSend({

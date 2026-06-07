@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   argsWithModel,
   concreteModelOptions,
+  isRemoteCliNotReady,
   modelFromArgs,
   modelSwitchCommand,
   sessionIdForDirectSend,
@@ -80,6 +81,14 @@ test('shouldRefreshRemoteControlSession only refreshes direct remote-control sen
   assert.equal(shouldRefreshRemoteControlSession('direct', 'remote-control'), true);
   assert.equal(shouldRefreshRemoteControlSession('relay', 'remote-control'), false);
   assert.equal(shouldRefreshRemoteControlSession('direct', 'managed'), false);
+});
+
+test('isRemoteCliNotReady only blocks direct remote-control without session', () => {
+  assert.equal(isRemoteCliNotReady('direct', 'remote-control', null), true);
+  assert.equal(isRemoteCliNotReady('relay', 'remote-control', null), false);
+  assert.equal(isRemoteCliNotReady('direct', 'remote-control', 'sess_real_123'), false);
+  assert.equal(isRemoteCliNotReady('direct', 'managed', null), false);
+  assert.equal(isRemoteCliNotReady('direct', undefined, null), false);
 });
 
 test('sessionIdForDirectSend requires fresh remote-control session instead of stale cached session', () => {
