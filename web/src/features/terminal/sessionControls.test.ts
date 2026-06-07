@@ -8,6 +8,7 @@ import {
   modelFromArgs,
   modelSwitchCommand,
   requireRuntimeReady,
+  shouldAppendUserMessageAfterSend,
   sessionIdForDirectSend,
   shouldRefreshRemoteControlSession,
   requireActiveSessionId,
@@ -98,6 +99,12 @@ test('requireRuntimeReady fails closed when runtime config is still missing', ()
     () => requireRuntimeReady({ defaultCommand: '', launchMode: 'remote-control' }),
     /运行时未就绪/,
   );
+});
+
+test('shouldAppendUserMessageAfterSend only delays direct remote-control user message display', () => {
+  assert.equal(shouldAppendUserMessageAfterSend('direct', 'remote-control'), true);
+  assert.equal(shouldAppendUserMessageAfterSend('direct', 'managed'), false);
+  assert.equal(shouldAppendUserMessageAfterSend('relay', 'remote-control'), false);
 });
 
 test('sessionIdForDirectSend requires fresh remote-control session instead of stale cached session', () => {

@@ -25,6 +25,7 @@ import type {
 import {
   requireRuntimeReady,
   sessionIdForDirectSend,
+  shouldAppendUserMessageAfterSend,
   shouldRefreshRemoteControlSession,
 } from '../../features/terminal/sessionControls';
 
@@ -683,10 +684,16 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw error;
       }
 
-      dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
+      const appendAfterSend = shouldAppendUserMessageAfterSend(state.connectionMode, launchMode);
+      if (!appendAfterSend) {
+        dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
+      }
 
       try {
         await client.sendInput(text);
+        if (appendAfterSend) {
+          dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: sid });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('no active runner') || msg.includes('engine_failure') || msg.includes('context canceled')) {

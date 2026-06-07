@@ -51,6 +51,10 @@ export function shouldRefreshRemoteControlSession(connectionMode: ConnectionMode
   return connectionMode === 'direct' && launchMode === 'remote-control';
 }
 
+export function shouldAppendUserMessageAfterSend(connectionMode: ConnectionMode, launchMode: LaunchMode): boolean {
+  return connectionMode === 'direct' && launchMode === 'remote-control';
+}
+
 export function isRemoteCliNotReady(
   connectionMode: ConnectionMode,
   launchMode: MaybeLaunchMode,
