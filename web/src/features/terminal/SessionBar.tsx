@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChat } from '../../core/state/ChatContext';
+import { argsWithModel, modelFromArgs, type ModelOption } from './sessionControls';
 
 const COMMANDS = [
   { value: 'claude', label: 'Claude' },
@@ -9,11 +10,6 @@ const COMMANDS = [
   { value: 'opencode', label: 'OpenCode' },
   { value: 'aichat', label: 'Aichat' },
 ];
-
-interface ModelOption {
-  value: string;
-  label: string;
-}
 
 interface ClaudeSetting {
   name: string;
@@ -25,26 +21,6 @@ interface SessionBarProps {
   currentSessionId?: string; // 预留给未来的会话恢复功能
   onToggleFiles?: () => void;
   showFiles?: boolean;
-}
-
-function modelFromArgs(args: string[]): string {
-  const idx = args.indexOf('--model');
-  return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : '';
-}
-
-function argsWithModel(args: string[], model: string): string[] {
-  const next: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--model') {
-      i++;
-      continue;
-    }
-    next.push(args[i]);
-  }
-  if (model) {
-    next.unshift('--model', model);
-  }
-  return next;
 }
 
 export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {

@@ -4,9 +4,14 @@ import assert from 'node:assert/strict';
 import {
   argsWithModel,
   concreteModelOptions,
+  modelFromArgs,
   modelSwitchCommand,
   requireActiveSessionId,
 } from './sessionControls.ts';
+
+test('modelFromArgs reads --model value from args', () => {
+  assert.equal(modelFromArgs(['--settings', 'c:/claude/settings.json', '--model', 'claude-sonnet-4-6']), 'claude-sonnet-4-6');
+});
 
 test('argsWithModel replaces an existing --model instead of appending another one', () => {
   assert.deepEqual(
