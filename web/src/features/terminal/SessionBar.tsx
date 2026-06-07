@@ -1,8 +1,13 @@
 // 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useChat } from '../../core/state/ChatContext';
-import { argsWithModel, modelFromArgs, type ModelOption } from './sessionControls';
+import {
+  argsWithModel,
+  concreteModelOptions,
+  modelFromArgs,
+  modelSwitchCommand,
+  type ModelOption,
+} from './sessionControls';
 
 const COMMANDS = [
   { value: 'claude', label: 'Claude' },
@@ -24,8 +29,7 @@ interface SessionBarProps {
 }
 
 export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
-  const navigate = useNavigate();
-  const { state, sendStart, sendStop, setSelectedCommand } = useChat();
+  const { state, sendStart, sendStop, sendInput, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,6 +53,13 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   }, [state.runtime.defaultCommand, state.selectedCommand]);
 
   const selectedModel = model ?? modelFromArgs(state.runtime.defaultArgs || []);
+  const hotSwitchModels = useMemo(() => concreteModelOptions(models), [models]);
+
+  useEffect(() => {
+    if (state.runtime.launchMode !== 'remote-control') return;
+    if (selectedModel || hotSwitchModels.length === 0) return;
+    setModel(hotSwitchModels[0].value);
+  }, [state.runtime.launchMode, selectedModel, hotSwitchModels]);
 
   useEffect(() => {
     setError(null);
@@ -111,11 +122,7 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     setError(null);
     try {
       setSelectedCommand(command);
-      let args: string[] = [];
-
-      if (selectedModel) {
-        args.push('--model', selectedModel);
-      }
+      let args = argsWithModel([], selectedModel);
 
       if (command === 'claude' && selectedSetting) {
         args.push('--settings', selectedSetting);
@@ -133,21 +140,14 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   };
 
   const handleApplyRemoteModel = async () => {
-    if (loading || state.stopping) return;
-    if (!confirm('切换模型需要重启当前会话，确认继续吗？')) return;
+    if (loading || state.stopping || !selectedModel || hotSwitchModels.length === 0) return;
 
     setLoading(true);
     setError(null);
     try {
-      const nextCommand = state.runtime.defaultCommand || command;
-      const args = argsWithModel(state.runtime.defaultArgs || [], selectedModel);
-      await sendStop();
-      const result = await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd });
-      if (result.sessionId) {
-        navigate(`/sessions/${result.sessionId}`, { replace: true });
-      }
+      await sendInput(modelSwitchCommand(selectedModel));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '切换模型失败');
+      setError('切换模型失败');
       console.error('apply remote model failed:', err);
     } finally {
       setLoading(false);
@@ -282,10 +282,10 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
                 className="sel-model"
                 value={selectedModel}
                 onChange={(e) => setModel(e.target.value)}
-                disabled={loading || state.stopping}
-                title="选择 Claude 模型（应用后会重启当前会话）"
+                disabled={loading || state.stopping || hotSwitchModels.length === 0}
+                title="选择 Claude 模型"
               >
-                {models.map((m) => (
+                {hotSwitchModels.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
@@ -294,10 +294,10 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
               <button
                 className="btn btn-primary"
                 onClick={handleApplyRemoteModel}
-                disabled={loading || state.stopping}
-                title="重启当前会话并应用模型"
+                disabled={loading || state.stopping || !selectedModel || hotSwitchModels.length === 0}
+                title="通过 Claude Code /model 热切换当前会话模型"
               >
-                {loading ? '应用中…' : '应用模型'}
+                {loading ? '切换中…' : '切换模型'}
               </button>
             </>
           )}
