@@ -23,6 +23,7 @@ import type {
   RuntimeConfig,
 } from '../ws/types';
 import {
+  requireRuntimeReady,
   sessionIdForDirectSend,
   shouldRefreshRemoteControlSession,
 } from '../../features/terminal/sessionControls';
@@ -464,12 +465,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const runtimeRef = useRef<RuntimeConfig>(initialState.runtime);
   const relayClientRef = useRef<RelayClient | null>(null);
 
-  const refreshActiveSessionId = useCallback(async (): Promise<string | null> => {
+  const refreshActiveSessionId = useCallback(async (clearWhenMissing = false): Promise<string | null> => {
     try {
       const res = await fetch('/api/v1/session-id');
       if (!res.ok) return null;
       const data = await res.json() as { sessionId?: string };
-      if (!data.sessionId) return null;
+      if (!data.sessionId) {
+        if (clearWhenMissing) {
+          dispatch({ type: 'SESSION_STOPPED' });
+        }
+        return null;
+      }
       localStorage.setItem('mobilecoding.sessionId', data.sessionId);
       dispatch({ type: 'ACTIVE_SESSION_DETECTED', sessionId: data.sessionId });
       return data.sessionId;
@@ -547,8 +553,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
-    refreshRuntimeConfig();
-    refreshActiveSessionId();
+    const refreshDirectState = async () => {
+      const runtime = await refreshRuntimeConfig();
+      await refreshActiveSessionId(runtime.launchMode === 'remote-control');
+    };
+    refreshDirectState();
   }, [status, state.connectionMode, refreshActiveSessionId, refreshRuntimeConfig]);
 
   // Relay 连接方法
@@ -645,10 +654,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
       const runtime = runtimeRef.current.defaultCommand
         ? runtimeRef.current
         : await refreshRuntimeConfig();
+      try {
+        requireRuntimeReady(runtime);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        dispatch({ type: 'ERROR', error: error.message });
+        throw error;
+      }
       const launchMode = runtime.launchMode || 'managed';
       let refreshedSessionId: string | null | undefined;
       if (shouldRefreshRemoteControlSession(state.connectionMode, launchMode)) {
-        refreshedSessionId = await refreshActiveSessionId();
+        refreshedSessionId = await refreshActiveSessionId(true);
       }
 
       let sid: string;

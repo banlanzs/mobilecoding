@@ -7,6 +7,7 @@ import {
   isRemoteCliNotReady,
   modelFromArgs,
   modelSwitchCommand,
+  requireRuntimeReady,
   sessionIdForDirectSend,
   shouldRefreshRemoteControlSession,
   requireActiveSessionId,
@@ -89,6 +90,14 @@ test('isRemoteCliNotReady only blocks direct remote-control without session', ()
   assert.equal(isRemoteCliNotReady('direct', 'remote-control', 'sess_real_123'), false);
   assert.equal(isRemoteCliNotReady('direct', 'managed', null), false);
   assert.equal(isRemoteCliNotReady('direct', undefined, null), false);
+});
+
+test('requireRuntimeReady fails closed when runtime config is still missing', () => {
+  assert.equal(requireRuntimeReady({ defaultCommand: 'claude', launchMode: 'remote-control' }).launchMode, 'remote-control');
+  assert.throws(
+    () => requireRuntimeReady({ defaultCommand: '', launchMode: 'remote-control' }),
+    /运行时未就绪/,
+  );
 });
 
 test('sessionIdForDirectSend requires fresh remote-control session instead of stale cached session', () => {

@@ -6,6 +6,7 @@ export interface ModelOption {
 type ConnectionMode = 'direct' | 'relay';
 type LaunchMode = 'managed' | 'remote-control';
 type MaybeLaunchMode = LaunchMode | undefined;
+type RuntimeReady<T extends { defaultCommand?: string }> = T & { defaultCommand: string };
 
 export function modelFromArgs(args: string[]): string {
   const idx = args.indexOf('--model');
@@ -56,6 +57,13 @@ export function isRemoteCliNotReady(
   sessionId: string | null,
 ): boolean {
   return connectionMode === 'direct' && launchMode === 'remote-control' && !sessionId;
+}
+
+export function requireRuntimeReady<T extends { defaultCommand?: string }>(runtime: T): RuntimeReady<T> {
+  if (!runtime.defaultCommand) {
+    throw new Error('运行时未就绪，请稍后重试');
+  }
+  return runtime as RuntimeReady<T>;
 }
 
 export function sessionIdForDirectSend({
