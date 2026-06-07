@@ -36,6 +36,7 @@ coverage.out
 .gemini/
 .workflow/
 .ccg/
+.worktrees/
 
 #resources
 ui-template/
