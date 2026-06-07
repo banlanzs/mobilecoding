@@ -29,5 +29,16 @@ Thumbs.db
 *.test
 *.out
 coverage.out
-mobilecoding
+/mobilecoding
 
+#cli
+.claude/
+.gemini/
+.workflow/
+
+#resources
+ui-template/
+hello.md
+
+# 测试文件
+test.txt
