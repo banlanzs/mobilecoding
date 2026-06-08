@@ -10,7 +10,7 @@ let db: Database | null = null
 export function getDatabase(path: string = 'mobilecoding.db'): Database {
   if (db) return db
 
-  db = open({ name: path }) as Database
+  db = open({ name: path }) as unknown as Database
 
   // Create tables
   db.execute(`

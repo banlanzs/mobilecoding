@@ -23,6 +23,15 @@ import type {
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed'
 
+export interface SessionMeta {
+  id: string
+  name: string
+  agent: string
+  model?: string
+  status: string
+  lastActivity?: string
+}
+
 export interface RequestEnvelope {
   type: 'req'
   id: string
