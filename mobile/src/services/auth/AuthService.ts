@@ -1,5 +1,5 @@
 import * as Keychain from 'react-native-keychain'
-import type { ServerProfile } from '@/types/server-profile'
+import type { ServerProfile } from '../../types/server-profile'
 
 export class AuthService {
   async saveProfile(profile: ServerProfile): Promise<void> {

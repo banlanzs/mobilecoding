@@ -1,6 +1,6 @@
 import React from 'react'
 import { SafeAreaView, FlatList, Text, View, TouchableOpacity } from 'react-native'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { useSessionStore } from '../stores/useSessionStore'
 
 export function SessionListScreen() {
   const sessions = useSessionStore(state => state.sessions)

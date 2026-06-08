@@ -24,6 +24,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@react-native-community/cli": "^20.1.3",
     "@react-native/babel-preset": "0.81.0",
     "@react-native/typescript-config": "0.81.0",
     "@testing-library/jest-native": "^5.4.3",

@@ -1,4 +1,4 @@
-import type { AppEvent, ConnectionStatus, Envelope } from '@/protocol/types'
+import type { AppEvent, ConnectionStatus, Envelope } from '../../protocol/types'
 
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000]
 const REQUEST_TIMEOUT = 30_000

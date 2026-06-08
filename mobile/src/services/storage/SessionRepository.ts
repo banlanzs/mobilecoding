@@ -1,5 +1,5 @@
 import type { Database } from './Database'
-import type { ServerProfile } from '@/types/server-profile'
+import type { ServerProfile } from '../../types/server-profile'
 
 export interface Session {
   id: string

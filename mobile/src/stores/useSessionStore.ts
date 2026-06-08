@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SessionMeta } from '@/protocol/types'
+import type { SessionMeta } from '../protocol/types'
 
 interface SessionState {
   sessions: SessionMeta[]

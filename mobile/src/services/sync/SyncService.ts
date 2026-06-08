@@ -2,7 +2,7 @@ import type { MessageRepository, Message } from '../storage/MessageRepository'
 import type { SyncStateRepository } from '../storage/SyncStateRepository'
 import type { SessionRepository } from '../storage/SessionRepository'
 import type { RestClient } from '../network/RestClient'
-import type { AppEvent } from '@/protocol/types'
+import type { AppEvent } from '../../protocol/types'
 
 interface ServerMessage {
   id: string

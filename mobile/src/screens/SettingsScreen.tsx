@@ -1,6 +1,6 @@
 import React from 'react'
 import { SafeAreaView, Text, View, Button } from 'react-native'
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore } from '../stores/useAuthStore'
 
 export function SettingsScreen() {
   const { activeProfile, status } = useAuthStore()

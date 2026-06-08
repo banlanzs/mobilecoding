@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ServerProfile } from '@/types/server-profile'
+import type { ServerProfile } from '../types/server-profile'
 
 interface AuthState {
   activeProfile: ServerProfile | null
