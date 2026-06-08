@@ -12,8 +12,13 @@ cmd/server/web/
 mobilecoding-*
 *.exe
 
-# 文档（本地规划文档，不入库）
-docs/
+# 文档（默认本地规划文档不入库；正式 spec 允许提交）
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/*.md
 Reference-Projects/
 debug/
 
