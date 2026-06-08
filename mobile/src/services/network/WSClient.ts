@@ -78,6 +78,10 @@ export class WSClient {
     this.handleOpen()
   }
 
+  __unsafeHandleMessage(raw: string) {
+    this.handleMessage(raw)
+  }
+
   private handleOpen() {
     this.reconnectAttempt = 0
     this.setStatus('connected')
@@ -98,16 +102,6 @@ export class WSClient {
     }, REQUEST_TIMEOUT)
     this.pending.set(id, { resolve, reject, timer })
     this.ws?.send(JSON.stringify({ type: 'req', id, method, params }))
-
-    // For the current protocol, resolve immediately after send
-    // (server ack is not required for fire-and-forget style)
-    setTimeout(() => {
-      const request = this.pending.get(id)
-      if (!request) return
-      clearTimeout(request.timer)
-      request.resolve(undefined)
-      this.pending.delete(id)
-    }, 0)
   }
 
   private handleMessage(raw: string) {

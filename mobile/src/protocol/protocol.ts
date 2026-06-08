@@ -8,6 +8,7 @@ export const METHOD_SESSION_STOP = 'session.stop' as const
 export const METHOD_SESSION_ABORT = 'session.abort' as const
 export const METHOD_SESSION_PERMISSION_ANSWER = 'session.permission.answer' as const
 export const METHOD_PERMISSION_RESPOND = 'permission.respond' as const
+export const METHOD_SESSION_LIST = 'session.list' as const
 
 export const ERR_PROTOCOL_ERROR = 'protocol_error' as const
 export const ERR_NOT_FOUND = 'not_found' as const
