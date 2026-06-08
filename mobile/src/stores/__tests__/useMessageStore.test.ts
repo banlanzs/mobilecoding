@@ -66,3 +66,36 @@ test('deduplicates permission prompts by toolName', () => {
   expect(messages).toHaveLength(1)
   expect((messages[0] as any).message).toBe('second')
 })
+
+test('filters internal protocol events from message list', () => {
+  const store = createMessageStore()
+
+  store.getState().handleEvent({
+    type: 'thinking_start', sessionId: 's1', time: '2026-06-08T00:00:00Z'
+  } as any, 's1')
+  store.getState().handleEvent({
+    type: 'text', sessionId: 's1', time: '2026-06-08T00:00:01Z', text: 'hello'
+  } as any, 's1')
+  store.getState().handleEvent({
+    type: 'turn_end', sessionId: 's1', time: '2026-06-08T00:00:02Z', text: '', message: ''
+  } as any, 's1')
+
+  const { messages, thinking, turnActive } = store.getState()
+  expect(messages).toHaveLength(1)
+  expect((messages[0] as any).text).toBe('hello')
+  expect(thinking).toBe(false)
+  expect(turnActive).toBe(false)
+})
+
+test('ignores hidden events like context_window and plan_mode', () => {
+  const store = createMessageStore()
+
+  store.getState().handleEvent({
+    type: 'context_window', sessionId: 's1', time: '2026-06-08T00:00:00Z', toolInput: {}
+  } as any, 's1')
+  store.getState().handleEvent({
+    type: 'plan_mode', sessionId: 's1', time: '2026-06-08T00:00:01Z', toolInput: {}
+  } as any, 's1')
+
+  expect(store.getState().messages).toHaveLength(0)
+})

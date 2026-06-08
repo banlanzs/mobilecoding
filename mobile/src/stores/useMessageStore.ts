@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla'
-import type { AppEvent, PermissionRequestEvent, TextDeltaEvent } from '@/protocol/types'
+import type { AppEvent, PermissionRequestEvent, TextDeltaEvent } from '../protocol/types'
 
 export interface UserMessage {
   type: 'user'
@@ -17,9 +17,11 @@ interface MessageState {
   thinking: boolean
   turnActive: boolean
   lastSeq: number
-  handleEvent: (event: AppEvent, sessionId?: string) => void
+  handleEvent: (event: any, sessionId?: string) => void
   addUserMessage: (text: string, sessionId: string) => void
   clearPermission: () => void
+  answerPermission: (allow: boolean) => void
+  resetMessages: () => void
 }
 
 export function createMessageStore() {
@@ -30,8 +32,25 @@ export function createMessageStore() {
     thinking: false,
     turnActive: false,
     lastSeq: 0,
-    handleEvent: (event, sessionId) => {
+    handleEvent: (event: any, sessionId?: string) => {
       const state = get()
+
+      // 内部协议事件：只更新状态，不加入消息列表
+      if (event.type === 'thinking_start' || event.type === 'thinking_end' ||
+          event.type === 'turn_end' || event.type === 'lifecycle' || event.type === 'agent_state') {
+        set({
+          thinking: event.type === 'thinking_start' ? true : event.type === 'turn_end' ? false : state.thinking,
+          turnActive: event.type === 'turn_end' ? false : true,
+          lastSeq: event.seq && event.seq > state.lastSeq ? event.seq : state.lastSeq,
+        })
+        return
+      }
+
+      // 隐藏事件：直接忽略
+      if (event.type === 'context_window' || event.type === 'plan_mode' || event.type === 'session') {
+        return
+      }
+
       let messages = [...state.messages]
 
       if (event.type === 'text_delta') {
@@ -78,6 +97,11 @@ export function createMessageStore() {
         turnActive: true
       })
     },
-    clearPermission: () => set({ permissionPrompt: null, permissionRequestId: null })
+    clearPermission: () => set({ permissionPrompt: null, permissionRequestId: null }),
+    answerPermission: (allow: boolean) => {
+      // UI 层调用此方法后，再发送 permission.respond 到服务器
+      set({ permissionPrompt: null, permissionRequestId: null })
+    },
+    resetMessages: () => set({ messages: [], permissionPrompt: null, permissionRequestId: null, thinking: false, turnActive: false, lastSeq: 0 })
   }))
 }

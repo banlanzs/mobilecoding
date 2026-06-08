@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text } from 'react-native'
-import type { DisplayMessage } from '@/stores/useMessageStore'
+import type { DisplayMessage } from '../../stores/useMessageStore'
 
 interface MessageCardProps {
   message: DisplayMessage
@@ -28,20 +28,67 @@ export function MessageCard({ message }: MessageCardProps) {
     )
   }
 
-  if (message.type === 'tool_use') {
+  if (message.type === 'tool_use' || message.type === 'tool_start') {
+    const m = message as any
     return (
       <View style={{ padding: 12, margin: 8, backgroundColor: '#fff3e0', borderRadius: 8 }}>
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>工具调用: {message.toolName}</Text>
-        <Text style={{ fontSize: 12, color: '#666' }}>{JSON.stringify(message.toolInput, null, 2)}</Text>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>工具调用: {m.toolName}</Text>
+        {m.toolInput && (
+          <Text style={{ fontSize: 12, color: '#666' }}>{JSON.stringify(m.toolInput, null, 2)}</Text>
+        )}
       </View>
     )
   }
 
   if (message.type === 'tool_result') {
+    const m = message as any
     return (
       <View style={{ padding: 12, margin: 8, backgroundColor: '#e8f5e9', borderRadius: 8 }}>
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>工具结果: {message.toolName}</Text>
-        <Text style={{ fontSize: 12, color: '#666' }}>{JSON.stringify(message.toolResult, null, 2)}</Text>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>
+          工具结果: {m.toolName || ''}
+        </Text>
+        {m.toolResult && (
+          <Text style={{ fontSize: 12, color: '#666' }}>{JSON.stringify(m.toolResult, null, 2)}</Text>
+        )}
+      </View>
+    )
+  }
+
+  if (message.type === 'tool_output' || message.type === 'tool_end') {
+    const m = message as any
+    return (
+      <View style={{ padding: 12, margin: 8, backgroundColor: '#e8f5e9', borderRadius: 8 }}>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>
+          工具输出: {m.toolName || ''}
+        </Text>
+        {m.toolOutput && (
+          <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>{m.toolOutput}</Text>
+        )}
+      </View>
+    )
+  }
+
+  if (message.type === 'bash_start') {
+    return (
+      <View style={{ padding: 12, margin: 8, backgroundColor: '#eceff1', borderRadius: 8 }}>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>命令执行</Text>
+        <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>$ {(message as any).toolInput}</Text>
+      </View>
+    )
+  }
+
+  if (message.type === 'bash_output') {
+    return (
+      <View style={{ padding: 12, margin: 8, backgroundColor: '#eceff1', borderRadius: 8 }}>
+        <Text style={{ fontFamily: 'monospace', fontSize: 12, color: '#333' }}>{(message as any).toolOutput}</Text>
+      </View>
+    )
+  }
+
+  if (message.type === 'bash_end') {
+    return (
+      <View style={{ padding: 12, margin: 8, backgroundColor: '#eceff1', borderRadius: 8 }}>
+        <Text style={{ fontSize: 12, color: '#666' }}>命令结束</Text>
       </View>
     )
   }
@@ -55,6 +102,7 @@ export function MessageCard({ message }: MessageCardProps) {
     )
   }
 
+  // 其他事件类型显示为调试信息
   return (
     <View style={{ padding: 12, margin: 8, backgroundColor: '#fafafa', borderRadius: 8 }}>
       <Text style={{ fontSize: 12, color: '#999' }}>{message.type}</Text>
