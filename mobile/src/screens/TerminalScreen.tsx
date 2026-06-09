@@ -166,7 +166,8 @@ class RealMobilecodingClient {
 
 const messageStore = createMessageStore()
 
-export function TerminalScreen(_props?: any) {
+export function TerminalScreen(props?: any) {
+  const routeParams = props?.route?.params || {}
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<any[]>([])
   const [turnActive, setTurnActive] = useState(false)
@@ -175,12 +176,12 @@ export function TerminalScreen(_props?: any) {
   const [permissionPrompt, setPermissionPrompt] = useState<any>(null)
 
   // 连接配置
-  const [useMock, setUseMock] = useState(false)  // 默认关闭 Mock
-  const [host, setHost] = useState('10.0.2.2')
-  const [port, setPort] = useState('8443')
-  const [token, setToken] = useState('')
-  const [path, setPath] = useState('/api/v1/ws')
-  const [useWss, setUseWss] = useState(false)
+  const [useMock, setUseMock] = useState(false)
+  const [host, setHost] = useState(routeParams.host || '10.0.2.2')
+  const [port, setPort] = useState(routeParams.port || '8445')
+  const [token, setToken] = useState(routeParams.token || '')
+  const [path, setPath] = useState(routeParams.path || '/api/v1/ws')
+  const [useWss, setUseWss] = useState(routeParams.useWss ?? false)
   const [sessionStarted, setSessionStarted] = useState(false)
 
   const clientRef = useRef<MockWSClient | RealMobilecodingClient | null>(null)
@@ -192,6 +193,12 @@ export function TerminalScreen(_props?: any) {
       setThinking(state.thinking)
       setPermissionPrompt(state.permissionPrompt)
     })
+
+    // 从 OnboardingScreen 导航过来时自动连接
+    if (routeParams.host && routeParams.token) {
+      setTimeout(() => handleConnect(), 100)
+    }
+
     return () => { unsubStore(); clientRef.current?.disconnect(); clientRef.current = null }
   }, [])
 
@@ -232,6 +239,11 @@ export function TerminalScreen(_props?: any) {
       console.error('Session start failed:', err)
     }
   }
+
+  useEffect(() => {
+    if (!connected || sessionStarted || !clientRef.current) return
+    handleStartSession()
+  }, [connected, sessionStarted])
 
   const handleSend = () => {
     if (!input.trim() || !clientRef.current || !connected) return

@@ -287,9 +287,9 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
 
-	// 开发模式：同时启动一个纯 WS 监听器（仅绑定 127.0.0.1），供本地 Android 模拟器调试用
+	// 开发模式：同时启动一个纯 WS 监听器（绑定 0.0.0.0），供 Android 模拟器/真机调试用
 	devPort := pickDevWSPort(cfg.Port)
-	devAddr := "127.0.0.1:" + devPort
+	devAddr := "0.0.0.0:" + devPort
 	devListener, err := net.Listen("tcp", devAddr)
 	if err == nil {
 		devSrv := &http.Server{Handler: r}
