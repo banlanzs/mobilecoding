@@ -260,6 +260,41 @@ export function TerminalScreen(props?: any) {
     handleStartSession()
   }, [connected, sessionStarted])
 
+  // 连接成功后自动拉取历史消息（支持 --resume 恢复会话）
+  useEffect(() => {
+    if (!connected || !token) return
+    const restScheme = useWss ? 'https' : 'http'
+    const restUrl = `${restScheme}://${host}:${port}/api/v1/messages?session_id=default-session&limit=50`
+    console.log('[Terminal] fetching history:', restUrl)
+    fetch(restUrl, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data: { messages?: Array<{ type: string; content: string; seq: number }> }) => {
+        if (!data.messages || data.messages.length === 0) {
+          console.log('[Terminal] no history messages')
+          return
+        }
+        console.log(`[Terminal] loaded ${data.messages.length} history messages`)
+        // 按 seq 正序排列，逐条喂给 messageStore
+        const sorted = [...data.messages].sort((a, b) => (a.seq || 0) - (b.seq || 0))
+        for (const msg of sorted) {
+          try {
+            const event = JSON.parse(msg.content)
+            messageStore.getState().handleEvent(event)
+          } catch (e) {
+            console.warn('[Terminal] failed to parse history message:', e)
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('[Terminal] history fetch failed (expected for new sessions):', err?.message)
+      })
+  }, [connected])
+
   const handleSend = () => {
     if (!input.trim() || !clientRef.current || !connected) return
     messageStore.getState().addUserMessage(input, 'default-session')
@@ -322,22 +357,24 @@ export function TerminalScreen(props?: any) {
                 <Button
                   title="允许"
                   onPress={() => {
+                    const reqId = messageStore.getState().permissionRequestId
                     messageStore.getState().answerPermission(true)
                     clientRef.current?.send('permission.respond', {
-                      requestId: messageStore.getState().permissionRequestId,
+                      requestId: reqId,
                       allow: true
-                    }).catch(() => {})
+                    }).catch((err) => console.error('[Perm] allow failed:', err))
                   }}
                 />
                 <Button
                   title="拒绝"
                   color="#f44336"
                   onPress={() => {
+                    const reqId = messageStore.getState().permissionRequestId
                     messageStore.getState().answerPermission(false)
                     clientRef.current?.send('permission.respond', {
-                      requestId: messageStore.getState().permissionRequestId,
+                      requestId: reqId,
                       allow: false
-                    }).catch(() => {})
+                    }).catch((err) => console.error('[Perm] deny failed:', err))
                   }}
                 />
               </View>

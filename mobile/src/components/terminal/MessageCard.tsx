@@ -10,8 +10,8 @@ export function MessageCard({ message }: MessageCardProps) {
   if (message.type === 'user') {
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 4 }}>
-        <View style={{ maxWidth: '75%', backgroundColor: '#95ec69', borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
-          <Text style={{ color: '#000' }}>{message.text}</Text>
+        <View style={{ flexShrink: 1, maxWidth: '78%', backgroundColor: '#95ec69', borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
+          <Text selectable style={{ color: '#000', lineHeight: 22 }}>{message.text}</Text>
         </View>
       </View>
     )
@@ -20,8 +20,8 @@ export function MessageCard({ message }: MessageCardProps) {
   if (message.type === 'text' || message.type === 'text_delta') {
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: 12, paddingVertical: 4 }}>
-        <View style={{ maxWidth: '75%', backgroundColor: '#ffffff', borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
-          <Text style={{ color: '#000' }}>{message.text}</Text>
+        <View style={{ flexShrink: 1, maxWidth: '78%', backgroundColor: '#ffffff', borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
+          <Text selectable style={{ color: '#000', lineHeight: 22 }}>{message.text}</Text>
           {message.thinking && (
             <Text style={{ marginTop: 8, fontStyle: 'italic', color: '#666' }}>{message.thinking}</Text>
           )}
