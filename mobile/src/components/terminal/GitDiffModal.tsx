@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Modal, View, Text, FlatList, Pressable, ActivityIndicator, SafeAreaView } from 'react-native'
+import { Modal, View, Text, ScrollView, FlatList, Pressable, ActivityIndicator, SafeAreaView, StatusBar, Platform } from 'react-native'
 
 interface GitFileStatus {
   path: string
@@ -35,7 +35,6 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
     const loadData = async () => {
       setLoading(true)
       try {
-        // 获取 cwd
         const verRes = await fetch(`${baseUrl}/version`)
         if (!verRes.ok) throw new Error(`version HTTP ${verRes.status}`)
         const verData = await verRes.json()
@@ -43,7 +42,6 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
         const resolvedCwd = verData?.runtime?.cwd || ''
         setCwd(resolvedCwd)
 
-        // 获取文件列表
         const statusUrl = `${baseUrl}/api/v1/git/status?cwd=${encodeURIComponent(resolvedCwd)}`
         const statusRes = await fetch(statusUrl, { headers: authHeader })
         if (!statusRes.ok) throw new Error(`git/status HTTP ${statusRes.status}`)
@@ -62,7 +60,7 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
 
     loadData()
     return () => { cancelled = true }
-  }, [visible, baseUrl, token])
+  }, [visible])
 
   const loadDiff = useCallback(async (filePath: string) => {
     setSelectedFile(filePath)
@@ -73,7 +71,13 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
       const res = await fetch(url, { headers: authHeader })
       if (!res.ok) throw new Error(`git/diff HTTP ${res.status}`)
       const data = await res.json()
-      setDiffContent(data?.diff || '(无差异)')
+      // data.diff 可能是 base64 或原始字符串，确保正确解码
+      const rawDiff = data?.diff || ''
+      if (rawDiff) {
+        setDiffContent(rawDiff)
+      } else {
+        setDiffContent('(无差异)')
+      }
     } catch (err: any) {
       console.warn('[GitDiff] diff 失败:', err?.message)
       setDiffContent(`获取失败: ${err?.message}`)
@@ -94,6 +98,9 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
     if (status === 'D') return '✗'
     return '?'
   }
+
+  // 将 diff 内容按行分割，用于 FlatList 渲染
+  const diffLines = diffContent ? diffContent.split('\n') : []
 
   const renderFileItem = ({ item }: { item: GitFileStatus }) => (
     <Pressable
@@ -120,9 +127,43 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
     </Pressable>
   )
 
+  const renderDiffLine = ({ item }: { item: string }) => {
+    // 根据行前缀着色
+    let color = '#333'
+    let backgroundColor = 'transparent'
+    let fontWeight: 'normal' | '600' = 'normal'
+
+    if (item.startsWith('+') && !item.startsWith('+++')) {
+      color = '#2e7d32'
+      backgroundColor = '#e8f5e9'
+    } else if (item.startsWith('-') && !item.startsWith('---')) {
+      color = '#c62828'
+      backgroundColor = '#ffebee'
+    } else if (item.startsWith('@@')) {
+      color = '#1565c0'
+      backgroundColor = '#e3f2fd'
+    } else if (item.startsWith('diff ') || item.startsWith('index ') || item.startsWith('---') || item.startsWith('+++')) {
+      color = '#666'
+      fontWeight = '600'
+    }
+
+    return (
+      <View style={{ backgroundColor }}>
+        <Text style={{
+          fontFamily: 'monospace', fontSize: 11, lineHeight: 16,
+          color, paddingHorizontal: 12, paddingVertical: 1, fontWeight,
+        }}>
+          {item}
+        </Text>
+      </View>
+    )
+  }
+
+  const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, backgroundColor: '#fff', paddingTop: statusBarHeight }}>
         {/* 顶栏 */}
         <View style={{
           paddingHorizontal: 16, paddingVertical: 12,
@@ -168,13 +209,10 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
                   <ActivityIndicator style={{ marginTop: 30 }} />
                 ) : (
                   <FlatList
-                    data={diffContent.split('\n')}
+                    data={diffLines}
                     keyExtractor={(_, i) => String(i)}
-                    renderItem={({ item }) => (
-                      <Text style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 16, color: '#333', paddingHorizontal: 12 }}>
-                        {item}
-                      </Text>
-                    )}
+                    renderItem={renderDiffLine}
+                    contentContainerStyle={{ paddingVertical: 4 }}
                   />
                 )}
               </View>
@@ -185,7 +223,7 @@ export function GitDiffModal({ visible, onClose, host, port, token, useWss }: Gi
             )}
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   )
 }
