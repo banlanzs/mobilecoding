@@ -3,16 +3,15 @@ import { render } from '@testing-library/react-native'
 import { TerminalScreen } from '../TerminalScreen'
 
 describe('TerminalScreen', () => {
-  it('renders Terminal screen', () => {
+  it('渲染纯聊天界面，不显示连接参数配置', () => {
     const screen = render(<TerminalScreen />)
-    expect(screen.getByText('Terminal')).toBeTruthy()
-  })
 
-  // 实际行为测试：
-  // 1. 连接成功后，connected 状态变为 true
-  // 2. useEffect 监听 connected 变化，自动调用 handleStartSession
-  // 3. handleStartSession 内部调用 client.send('session.start', ...)
-  //
-  // 由于 RealMobilecodingClient 是内联类，难以直接 mock，
-  // 这里只验证渲染正常。实际 session.start 逻辑通过手动测试 + 集成测试验证。
+    expect(screen.getByText('Claude')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('Host (10.0.2.2 / 局域网IP)')).toBeNull()
+    expect(screen.queryByPlaceholderText('Port (8443)')).toBeNull()
+    expect(screen.queryByPlaceholderText('Token（从服务器日志复制）')).toBeNull()
+    expect(screen.queryByPlaceholderText('WS 路径（/api/v1/ws）')).toBeNull()
+    expect(screen.queryByText('Mock 模式')).toBeNull()
+    expect(screen.queryByText(' WSS')).toBeNull()
+  })
 })

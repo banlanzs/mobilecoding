@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList, Switch } from 'react-native'
-import { WSClient } from '../services/network/WSClient'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList } from 'react-native'
 import { createMessageStore } from '../stores/useMessageStore'
 import { MessageCard } from '../components/terminal/MessageCard'
 
-// ─── Mock 客户端（本地测试用） ─────────────────────────
 class MockWSClient {
   private statusListeners = new Set<(status: 'idle' | 'connecting' | 'connected' | 'closed') => void>()
   private eventListeners = new Set<(event: any, sessionId?: string) => void>()
@@ -15,15 +13,17 @@ class MockWSClient {
     this.setStatus('connecting')
     setTimeout(() => { this.connected = true; this.setStatus('connected') }, 300)
   }
+
   disconnect() {
     this.pendingTimers.forEach(t => clearTimeout(t))
     this.pendingTimers.clear()
     this.connected = false
     this.setStatus('closed')
   }
+
   async send(method: string, params: any): Promise<any> {
     if (!this.connected) throw new Error('未连接')
-    if (method === 'send_message' && params?.text) {
+    if ((method === 'send_message' || method === 'session.input') && params?.text) {
       const sessionId = params.sessionId || 'default-session'
       const userText = params.text
       const timer = setTimeout(() => {
@@ -42,12 +42,12 @@ class MockWSClient {
     }
     return { ok: true }
   }
+
   onEvent(cb: (event: any, sessionId?: string) => void) { this.eventListeners.add(cb); return () => this.eventListeners.delete(cb) }
   onStatus(cb: (status: 'idle' | 'connecting' | 'connected' | 'closed') => void) { this.statusListeners.add(cb); return () => this.statusListeners.delete(cb) }
   private setStatus(status: 'idle' | 'connecting' | 'connected' | 'closed') { this.statusListeners.forEach(l => l(status)) }
 }
 
-// ─── 真实协议客户端（适配 mc claude /mobilecoding 后端） ─────────
 class RealMobilecodingClient {
   private ws: WebSocket | null = null
   private statusListeners = new Set<(status: 'idle' | 'connecting' | 'connected' | 'closed') => void>()
@@ -78,7 +78,6 @@ class RealMobilecodingClient {
     this.ws.onopen = () => {
       this.connected = true
       this.setStatus('connected')
-      // 连接成功后发送排队的请求
       this.flushQueue()
     }
     this.ws.onmessage = (event: any) => {
@@ -174,15 +173,14 @@ export function TerminalScreen(props?: any) {
   const [connected, setConnected] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [permissionPrompt, setPermissionPrompt] = useState<any>(null)
-
-  // 连接配置
-  const [useMock, setUseMock] = useState(false)
-  const [host, setHost] = useState(routeParams.host || '10.0.2.2')
-  const [port, setPort] = useState(routeParams.port || '8445')
-  const [token, setToken] = useState(routeParams.token || '')
-  const [path, setPath] = useState(routeParams.path || '/api/v1/ws')
-  const [useWss, setUseWss] = useState(routeParams.useWss ?? false)
   const [sessionStarted, setSessionStarted] = useState(false)
+
+  const host = routeParams.host || '10.0.2.2'
+  const port = routeParams.port || '8445'
+  const token = routeParams.token || ''
+  const path = routeParams.path || '/api/v1/ws'
+  const useWss = routeParams.useWss ?? false
+  const useMock = routeParams.useMock ?? false
 
   const clientRef = useRef<MockWSClient | RealMobilecodingClient | null>(null)
 
@@ -194,7 +192,6 @@ export function TerminalScreen(props?: any) {
       setPermissionPrompt(state.permissionPrompt)
     })
 
-    // 从 OnboardingScreen 导航过来时自动连接
     if (routeParams.host && routeParams.token) {
       setTimeout(() => handleConnect(), 100)
     }
@@ -213,18 +210,18 @@ export function TerminalScreen(props?: any) {
       mock.onEvent((event, sid) => messageStore.getState().handleEvent(event, sid))
       mock.onStatus((s) => setConnected(s === 'connected'))
       mock.connect()
-    } else {
-      const real = new RealMobilecodingClient()
-      clientRef.current = real
-      real.onEvent((event, sid) => messageStore.getState().handleEvent(event, sid))
-      real.onStatus((s) => setConnected(s === 'connected'))
-      const scheme = useWss ? 'wss' : 'ws'
-      const url = `${scheme}://${host}:${port}${path}`
-      real.connect(url, token)
+      return
     }
+
+    const real = new RealMobilecodingClient()
+    clientRef.current = real
+    real.onEvent((event, sid) => messageStore.getState().handleEvent(event, sid))
+    real.onStatus((s) => setConnected(s === 'connected'))
+    const scheme = useWss ? 'wss' : 'ws'
+    const url = `${scheme}://${host}:${port}${path}`
+    real.connect(url, token)
   }
 
-  // 连接后自动启动 session（mc claude 需要先 session.start）
   const handleStartSession = async () => {
     if (!clientRef.current || sessionStarted) return
     try {
@@ -248,7 +245,6 @@ export function TerminalScreen(props?: any) {
   const handleSend = () => {
     if (!input.trim() || !clientRef.current || !connected) return
     messageStore.getState().addUserMessage(input, 'default-session')
-    // mc claude 真实协议：session.input
     clientRef.current.send('session.input', { text: input })
       .catch(err => console.error('发送失败:', err))
     setInput('')
@@ -261,115 +257,78 @@ export function TerminalScreen(props?: any) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
-      {/* 标题栏 */}
-      <View style={{ padding: 12, backgroundColor: '#e0e0e0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text>Terminal</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ededed' }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#4caf50' : '#f44336' }} />
-          <Text style={{ fontSize: 12 }}>{connected ? '已连接' : '未连接'}</Text>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
+          <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
         </View>
       </View>
 
-      {/* 连接设置 */}
-      <View style={{ padding: 8, backgroundColor: '#fafafa', borderBottomWidth: 1, borderBottomColor: '#ddd' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Switch value={useMock} onValueChange={setUseMock} />
-          <Text>Mock 模式</Text>
-
-          {!useMock && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 16 }}>
-              <Switch value={useWss} onValueChange={setUseWss} />
-              <Text> WSS</Text>
-            </View>
-          )}
-        </View>
-        <View style={{ marginTop: 4 }}>
-          <TextInput value={host} onChangeText={setHost} placeholder="Host (10.0.2.2 / 局域网IP)" style={inputStyle} />
-          <TextInput value={port} onChangeText={setPort} placeholder="Port (8443)" keyboardType="numeric" style={inputStyle} />
-          {!useMock && (
-            <>
-              <TextInput value={token} onChangeText={setToken} placeholder="Token（从服务器日志复制）" style={inputStyle} />
-              <TextInput value={path} onChangeText={setPath} placeholder="WS 路径（/api/v1/ws）" style={inputStyle} />
-            </>
-          )}
-        </View>
-        <Button title={connected ? '已连接（点此重连）' : '连接'} onPress={handleConnect} />
-      </View>
-
-      {/* 消息列表 */}
       <FlatList
         data={messages}
         keyExtractor={(_, idx) => String(idx)}
         renderItem={({ item }) => <MessageCard message={item} />}
         style={{ flex: 1 }}
+        contentContainerStyle={{ paddingVertical: 8 }}
       />
 
-      {/* Thinking 指示器 */}
       {thinking && (
-        <View style={{ padding: 8, alignItems: 'center', backgroundColor: '#e8f5e9' }}>
-          <Text style={{ color: '#666', fontStyle: 'italic' }}>思考中...</Text>
-        </View>
-      )}
-
-      {/* 权限审批卡片 */}
-      {permissionPrompt && (
-        <View style={{ padding: 12, backgroundColor: '#fff9c4', borderTopWidth: 1, borderTopColor: '#fbc02d' }}>
-          <Text style={{ fontWeight: '600', marginBottom: 8 }}>
-            权限请求: {permissionPrompt.toolName}
-          </Text>
-          <Text style={{ marginBottom: 8 }}>{permissionPrompt.message}</Text>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Button
-              title="允许"
-              onPress={() => {
-                messageStore.getState().answerPermission(true)
-                clientRef.current?.send('permission.respond', {
-                  requestId: messageStore.getState().permissionRequestId,
-                  allow: true
-                }).catch(() => {})
-              }}
-            />
-            <Button
-              title="拒绝"
-              color="#f44336"
-              onPress={() => {
-                messageStore.getState().answerPermission(false)
-                clientRef.current?.send('permission.respond', {
-                  requestId: messageStore.getState().permissionRequestId,
-                  allow: false
-                }).catch(() => {})
-              }}
-            />
+        <View style={{ paddingHorizontal: 12, paddingBottom: 4 }}>
+          <View style={{ alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e5', paddingHorizontal: 14, paddingVertical: 10 }}>
+            <Text style={{ color: '#666', fontStyle: 'italic' }}>思考中...</Text>
           </View>
         </View>
       )}
 
-      {/* 输入栏 */}
-      <View style={{ padding: 12, flexDirection: 'row', gap: 8 }}>
+      {permissionPrompt && (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          <View style={{ backgroundColor: '#fff9c4', borderRadius: 12, borderWidth: 1, borderColor: '#fbc02d', padding: 12 }}>
+            <Text style={{ fontWeight: '600', marginBottom: 6 }}>权限请求</Text>
+            <Text style={{ color: '#000', marginBottom: 4 }}>{permissionPrompt.toolName}</Text>
+            <Text style={{ marginBottom: 10 }}>{permissionPrompt.message}</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Button
+                title="允许"
+                onPress={() => {
+                  messageStore.getState().answerPermission(true)
+                  clientRef.current?.send('permission.respond', {
+                    requestId: messageStore.getState().permissionRequestId,
+                    allow: true
+                  }).catch(() => {})
+                }}
+              />
+              <Button
+                title="拒绝"
+                color="#f44336"
+                onPress={() => {
+                  messageStore.getState().answerPermission(false)
+                  clientRef.current?.send('permission.respond', {
+                    requestId: messageStore.getState().permissionRequestId,
+                    allow: false
+                  }).catch(() => {})
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      )}
+
+      <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#d9d9d9', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
         <TextInput
           value={input}
           onChangeText={setInput}
-          placeholder={connected ? '输入消息...' : '请先连接'}
+          placeholder={connected ? '输入消息...' : '连接中...'}
           editable={connected}
-          style={{ flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12, height: 40, backgroundColor: connected ? '#fff' : '#f5f5f5' }}
+          style={{ flex: 1, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 12, height: 42, color: '#000' }}
         />
         {turnActive ? (
-          <Button title="停止" onPress={handleAbort} />
+          <Button title="停止" onPress={handleAbort} color="#f44336" />
         ) : (
-          <Button title="发送" onPress={handleSend} disabled={!connected || !input.trim()} />
+          <Button title="发送" onPress={handleSend} disabled={!connected || !input.trim()} color="#2e7d32" />
         )}
       </View>
     </SafeAreaView>
   )
-}
-
-const inputStyle = {
-  borderWidth: 1,
-  borderColor: '#ccc',
-  borderRadius: 6,
-  paddingHorizontal: 8,
-  paddingVertical: 4,
-  marginVertical: 2,
-  fontSize: 12
 }
