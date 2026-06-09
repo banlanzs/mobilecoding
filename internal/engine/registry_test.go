@@ -27,3 +27,14 @@ func TestRegistryRejectsEmpty(t *testing.T) {
 		t.Errorf("NewRunner(\"\") should fail")
 	}
 }
+
+func TestNewNativeRunnerUsesManagedClaudeRunnerForClaudeOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific regression: Claude Code exits under ordinary stdin/stdout pipes")
+	}
+
+	run := NewNativeRunner("claude")
+	if _, ok := run.(*ClaudeRunner); !ok {
+		t.Fatalf("NewNativeRunner(claude) = %T, want *ClaudeRunner on Windows", run)
+	}
+}

@@ -49,9 +49,13 @@ export function MessageList() {
       <div className="empty-state">
         <h2>mobilecoding</h2>
         <p>
-          选择一个 AI 引擎，点击 Start 开始会话。
-          <br />
-          输入消息后按 Enter 发送，Shift+Enter 换行。
+          {state.readOnly ? '该历史会话暂无可显示消息。' : '选择一个 AI 引擎，点击 Start 开始会话。'}
+          {!state.readOnly && (
+            <>
+              <br />
+              输入消息后按 Enter 发送，Shift+Enter 换行。
+            </>
+          )}
         </p>
       </div>
     );

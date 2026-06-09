@@ -45,6 +45,7 @@ type Config struct {
 	DefaultCmd    string
 	DefaultArgs   []string
 	Models        string // 逗号分隔的模型列表: label1:value1,label2:value2
+	LaunchMode    string // managed | remote-control
 	AuthDir       string
 	StoreDir      string
 	WatchdogWarn1 string
@@ -65,6 +66,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.DefaultCmd == "" {
 		c.DefaultCmd = "claude"
+	}
+	if c.LaunchMode == "" {
+		c.LaunchMode = "managed"
 	}
 	if c.Workspace == "" {
 		home, _ := os.UserHomeDir()
@@ -103,6 +107,7 @@ func Load() (Config, error) {
 		DefaultCmd:  env.DefaultCmd,
 		DefaultArgs: SplitArgs(os.ExpandEnv(env.DefaultArgs)),
 		Models:      env.Models,
+		LaunchMode:  env.LaunchMode,
 	}.WithDefaults()
 	return c, nil
 }
@@ -120,6 +125,9 @@ func (c Config) Validate() error {
 	}
 	if c.MTLS != "" && c.MTLS != "optional" && c.MTLS != "required" {
 		return fmt.Errorf("mtls must be one of optional|required, got %q", c.MTLS)
+	}
+	if c.LaunchMode != "" && c.LaunchMode != "managed" && c.LaunchMode != "remote-control" {
+		return fmt.Errorf("launch mode must be one of managed|remote-control, got %q", c.LaunchMode)
 	}
 	return nil
 }

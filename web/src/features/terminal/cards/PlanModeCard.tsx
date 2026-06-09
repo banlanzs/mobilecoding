@@ -6,7 +6,7 @@ export function PlanModeCard({ event }: { event: PlanModeEvent }) {
     <article className="card card-plan">
       <header className="card-header">
         <span className="card-badge">plan</span>
-        <span style={{ color: '#e0af68' }}>计划模式</span>
+        <span style={{ color: 'var(--mc-warn)' }}>计划模式</span>
       </header>
       <div className="plan-body">
         <pre>{formatPlan(event.toolInput)}</pre>

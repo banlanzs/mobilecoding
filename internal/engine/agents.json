@@ -1,0 +1,33 @@
+{
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "command": "claude",
+      "aliases": ["claude-code"],
+      "runner": "claude",
+      "description": "Anthropic Claude Code CLI"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "command": "codex",
+      "runner": "codex",
+      "description": "OpenAI Codex CLI"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "command": "opencode",
+      "runner": "generic",
+      "description": "OpenCode CLI"
+    },
+    {
+      "id": "aichat",
+      "name": "Aichat",
+      "command": "aichat",
+      "runner": "generic",
+      "description": "Aichat CLI"
+    }
+  ]
+}

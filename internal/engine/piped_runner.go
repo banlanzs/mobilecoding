@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -36,7 +35,7 @@ func NewPipeRunner() *PipeRunner {
 	}
 }
 
-func (r *PipeRunner) SessionID() string              { return r.sessionID }
+func (r *PipeRunner) SessionID() string               { return r.sessionID }
 func (r *PipeRunner) Events() <-chan Event            { return r.events }
 func (r *PipeRunner) Errors() <-chan error            { return r.errors }
 func (r *PipeRunner) Done() <-chan struct{}           { return r.done }
@@ -100,30 +99,30 @@ func (r *PipeRunner) Write(p []byte) error {
 }
 
 func (r *PipeRunner) SendToStdin(p []byte) error { return r.Write(p) }
-func (r *PipeRunner) Abort()                      {}
+func (r *PipeRunner) Abort()                     {}
 
 func (r *PipeRunner) Resize(_, _ int) error {
 	return nil
 }
 
 func (r *PipeRunner) readLoop(reader io.ReadCloser) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		data := make([]byte, len(line)+1)
-		copy(data, line)
-		data[len(line)] = '\n'
-		select {
-		case r.events <- Event{Kind: EventRaw, Data: data}:
-		default:
+	buf := make([]byte, 4096)
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 {
+			data := make([]byte, n)
+			copy(data, buf[:n])
 			select {
-			case r.errors <- errors.New("events channel full, dropping chunk"):
+			case r.events <- Event{Kind: EventRaw, Data: data}:
 			default:
+				select {
+				case r.errors <- errors.New("events channel full, dropping chunk"):
+				default:
+				}
 			}
+		}
+		if err != nil {
+			return
 		}
 	}
 }

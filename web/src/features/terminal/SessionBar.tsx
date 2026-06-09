@@ -1,6 +1,11 @@
-// 会话控制栏：command + model 选择 + settings 下拉 + start/stop 按钮
-import { useEffect, useState, useCallback } from 'react';
+// 会话控制栏：command/model/settings 选择 + 上下文进度 + start/stop
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useChat } from '../../core/state/ChatContext';
+import {
+  argsWithModel,
+  modelFromArgs,
+  type ModelOption,
+} from './sessionControls';
 
 const COMMANDS = [
   { value: 'claude', label: 'Claude' },
@@ -9,22 +14,28 @@ const COMMANDS = [
   { value: 'aichat', label: 'Aichat' },
 ];
 
-interface ModelOption {
-  value: string;
-  label: string;
-}
-
 interface ClaudeSetting {
   name: string;
   path: string;
 }
 
-export function SessionBar() {
-  const { state, sendStart, sendStop } = useChat();
+interface SessionBarProps {
+  onBack?: () => void;
+  currentSessionId?: string; // 预留给未来的会话恢复功能
+  onToggleFiles?: () => void;
+  showFiles?: boolean;
+}
+
+export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
+  const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 双重确认停止状态
+  const [confirmStop, setConfirmStop] = useState(false);
+  const confirmTimeoutRef = useRef<number | null>(null);
 
   // 模型列表（从服务端拉取）
   const [models, setModels] = useState<ModelOption[]>([{ value: '', label: '默认模型' }]);
@@ -33,14 +44,17 @@ export function SessionBar() {
   const [selectedSetting, setSelectedSetting] = useState<string>('');
 
   useEffect(() => {
-    if (state.runtime.defaultCommand) {
-      setCommand(state.runtime.defaultCommand);
+    const nextCommand = state.selectedCommand || state.runtime.defaultCommand;
+    if (nextCommand) {
+      setCommand(nextCommand);
     }
-  }, [state.runtime.defaultCommand]);
+  }, [state.runtime.defaultCommand, state.selectedCommand]);
+
+  const selectedModel = model ?? modelFromArgs(state.runtime.defaultArgs || []);
 
   useEffect(() => {
     setError(null);
-  }, [command, model]);
+  }, [command, selectedModel]);
 
   // 拉取模型列表（可指定 settings 路径）
   const fetchModels = useCallback(async (settingsPath?: string) => {
@@ -98,11 +112,8 @@ export function SessionBar() {
     setLoading(true);
     setError(null);
     try {
-      let args: string[] = [];
-
-      if (model) {
-        args.push('--model', model);
-      }
+      setSelectedCommand(command);
+      let args = argsWithModel([], selectedModel);
 
       if (command === 'claude' && selectedSetting) {
         args.push('--settings', selectedSetting);
@@ -119,7 +130,48 @@ export function SessionBar() {
     }
   };
 
+  const handleApplyRemoteModel = async () => {
+    if (loading || state.stopping) return;
+    if (!confirm('切换模型需要重启当前会话，确认继续吗？')) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const nextCommand = state.runtime.defaultCommand || command;
+      const args = argsWithModel(state.runtime.defaultArgs || [], selectedModel);
+      await sendStart({ command: nextCommand, args, cwd: state.runtime.cwd, restart: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换模型失败');
+      console.error('apply remote model failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStop = async () => {
+    if (state.stopping) return;
+
+    // 双重确认机制
+    if (!confirmStop) {
+      // 第一次点击：进入确认模式
+      setConfirmStop(true);
+      // 5 秒后自动取消确认
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmStop(false);
+      }, 5000);
+      return;
+    }
+
+    // 第二次点击：真正停止
+    setConfirmStop(false);
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+      confirmTimeoutRef.current = null;
+    }
+
     setError(null);
     try {
       await sendStop();
@@ -129,45 +181,171 @@ export function SessionBar() {
     }
   };
 
-  // Relay 模式下：只显示停止按钮
+  // 清理超时定时器
+  useEffect(() => {
+    return () => {
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCommandChange = (next: string) => {
+    setCommand(next);
+    setSelectedCommand(next);
+    if (next !== 'claude') {
+      setModel('');
+    }
+  };
+
+  // 上下文进度条：仅在收到真实 context_window 事件后显示（不放假数据）
+  const ctx = state.contextWindow;
+  const ctxPct = ctx && ctx.max > 0 ? Math.min(100, Math.round((ctx.used / ctx.max) * 100)) : null;
+  const contextMeter = ctxPct !== null ? (
+    <div className="context-window">
+      <span className="context-label">上下文 {ctxPct}%</span>
+      <div className="progress-track">
+        <div className="progress-bar" style={{ width: `${ctxPct}%` }} />
+      </div>
+    </div>
+  ) : null;
+
+  if (state.readOnly) {
+    return (
+      <div className="session-bar session-bar-active">
+        {onBack && (
+          <button className="btn-back" onClick={onBack} title="返回会话列表">
+            ←
+          </button>
+        )}
+        {error && <div className="session-error">{error}</div>}
+        <span className="session-active" title={currentSessionId || state.viewedSessionId || ''}>
+          历史会话，只读
+        </span>
+      </div>
+    );
+  }
+
+  // Relay 模式：指示 + 断开
   if (state.connectionMode === 'relay') {
     return (
-      <div className="session-bar relay-mode">
+      <div className="session-bar">
+        {onBack && (
+          <button className="btn-back" onClick={onBack} title="返回会话列表">
+            ←
+          </button>
+        )}
         {error && <div className="session-error">{error}</div>}
         <div className="relay-indicator">
           <span className="relay-dot" />
           Relay Connected
         </div>
-        <button className="btn btn-danger" onClick={handleStop}>
-          Disconnect
-        </button>
+        <div className="session-actions">
+          <button
+            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            onClick={handleStop}
+            disabled={state.stopping}
+            title={confirmStop ? '再次点击确认断开' : '断开连接'}
+          >
+            {state.stopping ? 'Stopping...' : confirmStop ? '⚠️ 确认断开？' : 'Disconnect'}
+          </button>
+        </div>
       </div>
     );
   }
 
-  // 有活跃会话时：只显示 Stop 按钮
+  // 有活跃会话：会话信息 + 上下文进度 + Stop
   if (state.sessionId) {
+    const activeLabel = `${command}${selectedModel ? ` (${selectedModel})` : ''} — active`;
+    return (
+      <div className="session-bar session-bar-active">
+        {onBack && (
+          <button className="btn-back" onClick={onBack} title="返回会话列表">
+            ←
+          </button>
+        )}
+        {error && <div className="session-error">{error}</div>}
+        <span className="session-active" title={activeLabel}>
+          {activeLabel}
+        </span>
+        {contextMeter}
+        <div className="session-actions">
+          {state.runtime.launchMode === 'remote-control' && command === 'claude' && (
+            <>
+              <select
+                className="sel-model"
+                value={selectedModel}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={loading || state.stopping}
+                title="选择 Claude 模型（应用后会重启当前托管会话）"
+              >
+                {models.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary"
+                onClick={handleApplyRemoteModel}
+                disabled={loading || state.stopping}
+                title="重启当前托管会话并应用模型"
+              >
+                {loading ? '应用中…' : '应用模型'}
+              </button>
+            </>
+          )}
+          {onToggleFiles && (
+            <button
+              className={`btn-files${showFiles ? ' active' : ''}`}
+              onClick={onToggleFiles}
+              title="文件变更"
+            >
+              📁
+            </button>
+          )}
+          <button
+            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            onClick={handleStop}
+            disabled={state.stopping}
+            title={confirmStop ? '再次点击确认停止' : '停止会话'}
+          >
+            {state.stopping ? 'Stopping...' : confirmStop ? '⚠️ 确认停止？' : 'Stop'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // mc claude 启动的 server：无托管 session，只被动监控本地终端 CLI
+  if (state.status === 'connected' && state.runtime.launchMode === 'remote-control') {
     return (
       <div className="session-bar">
-        {error && <div className="session-error">{error}</div>}
-        <span className="session-active">{command}{model ? ` (${model})` : ''} — active</span>
-        <button className="btn btn-danger" onClick={handleStop}>
-          Stop
-        </button>
+        {onBack && (
+          <button className="btn-back" onClick={onBack} title="返回会话列表">
+            ←
+          </button>
+        )}
+        <span className="session-active">🔗 遥控器模式 — 终端 CLI 已连接</span>
       </div>
     );
   }
 
-  // 无会话：显示完整选择界面
+  // mobilecoding 托管模式：连接后仍显示完整选择界面，由手机端启动 session
   return (
-    <div className="session-bar">
+    <div className="session-bar session-bar-setup">
+      {onBack && (
+        <button className="btn-back" onClick={onBack} title="返回会话列表">
+          ←
+        </button>
+      )}
       {error && <div className="session-error">{error}</div>}
 
       <select
-        value={command}
-        onChange={(e) => setCommand(e.target.value)}
-        disabled={loading}
         className="sel-command"
+        value={command}
+        onChange={(e) => handleCommandChange(e.target.value)}
+        disabled={loading}
       >
         {COMMANDS.map((c) => (
           <option key={c.value} value={c.value}>
@@ -179,10 +357,10 @@ export function SessionBar() {
       {/* 模型选择 — 仅 Claude 时显示 */}
       {command === 'claude' && (
         <select
-          value={model}
+          className="sel-model"
+          value={selectedModel}
           onChange={(e) => setModel(e.target.value)}
           disabled={loading}
-          className="sel-model"
           title="选择 AI 模型"
         >
           {models.map((m) => (
@@ -196,11 +374,11 @@ export function SessionBar() {
       {/* Claude 配置选择 */}
       {command === 'claude' && claudeSettings.length > 0 && (
         <select
+          className="sel-settings"
           value={selectedSetting}
           onChange={(e) => setSelectedSetting(e.target.value)}
           disabled={loading}
           title="选择 Claude 配置文件"
-          className="sel-settings"
         >
           {claudeSettings.map((s) => (
             <option key={s.path} value={s.path}>
@@ -214,7 +392,7 @@ export function SessionBar() {
         <button
           className="btn btn-primary"
           onClick={handleStart}
-          disabled={loading || state.status !== 'connected'}
+          disabled={loading}
         >
           {loading ? '启动中…' : 'Start'}
         </button>

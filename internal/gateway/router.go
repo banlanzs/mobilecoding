@@ -7,13 +7,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/banlanzs/mobilecoding/internal/auth"
+	"github.com/banlanzs/mobilecoding/internal/engine"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/store"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
@@ -27,8 +30,10 @@ type Dependencies struct {
 	CA          *auth.CA // 用于设备证书签发
 	DefaultCmd  string
 	DefaultArgs []string
-	Models      string        // 逗号分隔: label:value,...
-	Relay       *relay.Server // Relay 中继服务器
+	LaunchMode  string
+	Models      string              // 逗号分隔: label:value,...
+	Relay       *relay.Server       // Relay 中继服务器
+	MsgStore    *store.MessageStore // 消息持久化存储（可选）
 	// HookHandler 已移至独立 HTTP 监听器（startHookListener），不通过主 router 提供。
 }
 
@@ -62,14 +67,16 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 			"runtime": map[string]any{
 				"defaultCommand": deps.DefaultCmd,
 				"defaultArgs":    deps.DefaultArgs,
+				"launchMode":     deps.LaunchMode,
 				"cwd":            cwd,
 			},
 		})
 	})
 
-	r.With(func(next http.Handler) http.Handler {
-		return auth.BearerMiddleware(authToken, next)
-	}).Handle("/api/v1/ws", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 客户端状态端点 + WebSocket（不需要认证，QR 码 token 提供初始安全性）
+	r.Get("/api/v1/clients", clientsHandler(deps.WS))
+	r.Get("/api/v1/session-id", sessionIDHandler(deps.Session))
+	r.HandleFunc("/api/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		if deps.WS == nil {
 			http.Error(w, "ws handler not configured", http.StatusServiceUnavailable)
 			return
@@ -80,7 +87,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 			return
 		}
 		_ = deps.WS.ServeConn(r.Context(), c)
-	}))
+	})
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
@@ -90,8 +97,23 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/memory", memoryListHandler(deps.StoreDir))
 		r.Put("/memory/{name}", memoryUpdateHandler(deps.StoreDir))
 		r.Post("/device-cert", deviceCertHandler(deps.CA))
+		r.Get("/agents", agentsHandler())
 		r.Get("/claude-settings", claudeSettingsHandler())
 		r.Get("/hook-status", hookStatusHandler())
+		r.Get("/messages", messagesHandler(deps.MsgStore))
+		r.Get("/search", searchHandler(deps.MsgStore))
+		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
+
+		// 会话管理 API
+		r.Get("/sessions", sessionsListHandler(deps.Session))
+		r.Post("/sessions", sessionsCreateHandler(deps.Session))
+		r.Get("/sessions/{id}", sessionsGetHandler(deps.Session))
+		r.Delete("/sessions/{id}", sessionsDeleteHandler(deps.Session))
+
+		// Git 文件变更 API
+		r.Get("/git/status", gitStatusHandler())
+		r.Get("/git/diff", gitDiffHandler())
+		r.Get("/git/diff-summary", gitDiffSummaryHandler())
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
@@ -205,6 +227,7 @@ func min(a, b int) int {
 	}
 	return b
 }
+
 // 返回格式：[{ name: "axonhub", path: "C:/Users/xxx/.claude/settings.axonhub.json" }, ...]
 func claudeSettingsHandler() http.HandlerFunc {
 	type settingEntry struct {
@@ -311,6 +334,162 @@ func parseModels(raw string) []map[string]string {
 		models = append(models, map[string]string{"label": "默认模型", "value": ""})
 	}
 	return models
+}
+
+// messagesHandler 返回历史消息查询 API。
+// GET /api/v1/messages?session_id=xxx&after_seq=0&limit=100
+// GET /api/v1/messages?session_id=xxx&before_seq=999&limit=100
+func messagesHandler(msgStore *store.MessageStore) http.HandlerFunc {
+	type response struct {
+		Messages []store.SequencedMessage `json:"messages"`
+		HasMore  bool                     `json:"hasMore"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if msgStore == nil {
+			http.Error(w, "message store not available", http.StatusServiceUnavailable)
+			return
+		}
+		sessionID := r.URL.Query().Get("session_id")
+		if sessionID == "" {
+			http.Error(w, "session_id required", http.StatusBadRequest)
+			return
+		}
+		limit := 100
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+				limit = n
+			}
+		}
+		afterStr := r.URL.Query().Get("after_seq")
+		beforeStr := r.URL.Query().Get("before_seq")
+
+		var msgs []store.SequencedMessage
+		var err error
+		switch {
+		case afterStr != "" && beforeStr != "":
+			http.Error(w, "after_seq and before_seq are mutually exclusive", http.StatusBadRequest)
+			return
+		case afterStr != "":
+			afterSeq, e := strconv.ParseInt(afterStr, 10, 64)
+			if e != nil {
+				http.Error(w, "invalid after_seq", http.StatusBadRequest)
+				return
+			}
+			msgs, err = msgStore.GetMessagesAfter(sessionID, afterSeq, limit)
+		case beforeStr != "":
+			beforeSeq, e := strconv.ParseInt(beforeStr, 10, 64)
+			if e != nil {
+				http.Error(w, "invalid before_seq", http.StatusBadRequest)
+				return
+			}
+			msgs, err = msgStore.GetMessagesBefore(sessionID, beforeSeq, limit)
+		default:
+			msgs, err = msgStore.GetMessagesAfter(sessionID, 0, limit)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		hasMore := len(msgs) > limit
+		if hasMore {
+			msgs = msgs[:limit]
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response{Messages: msgs, HasMore: hasMore})
+	}
+}
+
+// agentsHandler 返回可用 Agent 列表。
+func agentsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		agents := engine.ListAgents()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(agents)
+	}
+}
+
+// clientsHandler 返回当前 WebSocket 客户端连接数。
+// 供 CLI 包装器轮询检测手机连接状态。
+func clientsHandler(wsHandler *ws.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		count := 0
+		if wsHandler != nil {
+			count = wsHandler.SubscriberCount()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"subscribers": count})
+	}
+}
+
+// searchHandler 搜索消息内容。
+func searchHandler(msgStore *store.MessageStore) http.HandlerFunc {
+	type response struct {
+		Results []store.SearchResult `json:"results"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if msgStore == nil {
+			http.Error(w, "message store not available", http.StatusServiceUnavailable)
+			return
+		}
+		sessionID := r.URL.Query().Get("session_id")
+		query := r.URL.Query().Get("q")
+		if sessionID == "" || query == "" {
+			http.Error(w, "session_id and q required", http.StatusBadRequest)
+			return
+		}
+		limit := 20
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+				limit = n
+			}
+		}
+		results, err := msgStore.SearchMessages(sessionID, query, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response{Results: results})
+	}
+}
+
+// sessionIDHandler 返回当前活跃会话的 Claude resume session ID。
+// 供 mc CLI 在模式切换时获取 --resume 参数。
+func sessionIDHandler(mgr *session.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if mgr == nil {
+			http.Error(w, "session manager not available", http.StatusServiceUnavailable)
+			return
+		}
+		resumeID := mgr.ResumeSessionID()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"sessionId":       mgr.SessionID(),
+			"resumeSessionId": resumeID,
+		})
+	}
+}
+
+// resumeHandler 接收 mc CLI 发来的 resume session ID，停止当前会话并存储 resume ID。
+// 手机端下次调用 session.start 时会自动使用此 resume ID 继续会话。
+func resumeHandler(mgr *session.Manager, wsHandler *ws.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var p struct {
+			ResumeSessionID string `json:"resumeSessionId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil || p.ResumeSessionID == "" {
+			http.Error(w, "resumeSessionId required", http.StatusBadRequest)
+			return
+		}
+		// 停止当前会话（如果有）
+		if mgr.SessionID() != "" {
+			mgr.Stop()
+		}
+		// 存储 resume ID，供下次 session.start 使用
+		wsHandler.SetPendingResumeID(p.ResumeSessionID)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "resumeSessionId": p.ResumeSessionID})
+	}
 }
 
 func deviceCertHandler(ca *auth.CA) http.HandlerFunc {

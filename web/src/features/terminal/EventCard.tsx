@@ -17,7 +17,7 @@ export function EventCard({ event }: { event: DisplayMessage }) {
       <article className="card card-user">
         <header className="card-header">
           <span className="card-badge">you</span>
-          <span style={{ color: '#565f89', fontSize: 11 }}>
+          <span style={{ color: 'var(--mc-meta)', fontSize: 11 }}>
             {formatTime(user.time)}
           </span>
         </header>

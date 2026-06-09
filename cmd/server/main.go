@@ -25,6 +25,7 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/projection"
 	"github.com/banlanzs/mobilecoding/internal/relay"
 	"github.com/banlanzs/mobilecoding/internal/session"
+	"github.com/banlanzs/mobilecoding/internal/store"
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
@@ -44,7 +45,7 @@ func main() {
 		return
 	}
 	if flags.showHelp {
-		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -ip                 local IP for cert & QR code (auto-detect if omitted)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)")
+		fmt.Fprintln(os.Stderr, "Usage: mobilecoding [flags]\n  -port               listen port (default 8443)\n  -ip                 local IP for cert & QR code (auto-detect if omitted)\n  -default-command    default AI command (claude|codex|opencode|aichat)\n  -default-args       default args for AI command (space-separated, quoted)\n  -launch-mode        managed|remote-control")
 		return
 	}
 
@@ -120,7 +121,6 @@ func main() {
 		logger.Warn("startup", "print QR code failed: %v", err)
 	}
 
-
 	// 4. Run
 	if err := run(cfg, logger, tlsCfg, ca); err != nil {
 		logger.Error("startup", "run: %v", err)
@@ -139,6 +139,7 @@ func buildConfig(f serverFlags) (config.Config, error) {
 		LogLevel:    firstNonEmpty(f.logLevel, env.LogLevel),
 		DefaultCmd:  firstNonEmpty(f.defaultCmd, env.DefaultCmd),
 		DefaultArgs: config.SplitArgs(os.ExpandEnv(firstNonEmpty(f.defaultArgs, env.DefaultArgs))),
+		LaunchMode:  firstNonEmpty(f.launchMode, env.LaunchMode),
 	}.WithDefaults()
 
 	if c.AuthToken == "" {
@@ -148,6 +149,9 @@ func buildConfig(f serverFlags) (config.Config, error) {
 		}
 		c.AuthToken = tok
 		fmt.Fprintf(os.Stderr, "==> Generated new auth token (MVP 1: in-memory only): %s\n", tok)
+	}
+	if err := c.Validate(); err != nil {
+		return c, err
 	}
 
 	if err := os.MkdirAll(c.Workspace, 0o755); err != nil {
@@ -186,15 +190,40 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		logger.Warn("startup", "embedded web/ missing; using stub SPA")
 	}
 
+	// 消息持久化存储
+	msgStore, err := store.Open("")
+	if err != nil {
+		logger.Warn("startup", "open message store: %v (continuing without persistence)", err)
+	} else {
+		defer msgStore.Close()
+		logger.Info("startup", "message store ready")
+		// 启动时清理超过 7 天的旧消息
+		if deleted, err := msgStore.CleanupOldSessions(7); err == nil && deleted > 0 {
+			logger.Info("startup", "cleaned up %d old messages", deleted)
+		}
+	}
+
 	// 创建 relay 服务器
 	relayServer := relay.NewServer(relay.DefaultSessionConfig())
+
+	// 会话元数据存储
+	sessionStore, err := session.NewStore("")
+	if err != nil {
+		logger.Warn("startup", "open session store: %v (continuing without persistence)", err)
+	} else {
+		logger.Info("startup", "session store ready")
+	}
 
 	hub := ws.NewHub()
 	mgr := session.NewManager()
 	mgr.SetLogger(logger.Info)
+	if sessionStore != nil {
+		mgr.SetStore(sessionStore)
+	}
 	wsHandler := ws.NewHandler(hub, mgr, logger)
 
 	// 权限 hook：Claude Code 的 PermissionRequest HTTP hook 端点
+	serverCWD, _ := os.Getwd()
 	hookRegistry := hook.NewRegistry()
 	hookHandler := hook.NewHandler(hookRegistry, func(ev hook.Event) {
 		// 把权限请求包装成 projection.Event 通过 hub 广播给 WS 客户端
@@ -206,6 +235,9 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		}
 		hub.Broadcast(env)
 	})
+	if cfg.LaunchMode == "remote-control" {
+		hookHandler.AllowedCWD = serverCWD
+	}
 	hookHandler.Log = func(format string, args ...any) { logger.Info("hook-http", format, args...) }
 	wsHandler.SetHookRegistry(hookRegistry)
 
@@ -216,8 +248,8 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		logger.Warn("startup", "start hook listener: %v (continue without)", err)
 	} else {
 		defer hookListener.Close()
-		// 自动注入 hook 到 ~/.claude/settings.json
-		if err := installClaudeHook(cfg, hookURL, logger); err != nil {
+		// 自动注入 hook 到当前项目 .claude/settings.local.json
+		if err := installClaudeHook(cfg, hookURL, serverCWD, logger); err != nil {
 			logger.Warn("startup", "install Claude hook: %v (continue without)", err)
 		}
 	}
@@ -225,7 +257,17 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	// 启动全局事件转发器：从 session.Manager 读取事件并广播到所有连接
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go forwardSessionEvents(ctx, mgr, hub, logger)
+	var saveCh chan<- saveRequest
+	if msgStore != nil {
+		saveCh = startAsyncWriter(ctx, msgStore, logger)
+	}
+	go forwardSessionEvents(ctx, mgr, hub, logger, saveCh)
+
+	if cfg.LaunchMode == "remote-control" {
+		if err := startNativeControlSession(ctx, cfg, mgr, logger); err != nil {
+			return err
+		}
+	}
 
 	r := gateway.NewRouter(gateway.Dependencies{
 		FS:          staticFS,
@@ -235,23 +277,64 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 		CA:          ca,
 		DefaultCmd:  cfg.DefaultCmd,
 		DefaultArgs: cfg.DefaultArgs,
+		LaunchMode:  cfg.LaunchMode,
 		Models:      cfg.Models,
 		Relay:       relayServer,
+		MsgStore:    msgStore,
 	}, cfg.AuthToken)
 
 	addr := ":" + cfg.Port
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
+
+	// 开发模式：同时启动一个纯 WS 监听器（绑定 0.0.0.0），供 Android 模拟器/真机调试用
+	devPort := pickDevWSPort(cfg.Port)
+	devAddr := "0.0.0.0:" + devPort
+	devListener, err := net.Listen("tcp", devAddr)
+	if err == nil {
+		devSrv := &http.Server{Handler: r}
+		go func() {
+			logger.Info("startup", "dev ws listener (no TLS): %s", devListener.Addr().String())
+			if err := devSrv.Serve(devListener); err != nil && err != http.ErrServerClosed {
+				logger.Error("dev-ws", "serve: %v", err)
+			}
+		}()
+		defer devListener.Close()
+	} else {
+		logger.Warn("startup", "dev ws listener skipped: %v", err)
+	}
+
 	return srv.ListenAndServeTLS("", "")
 }
 
-// installClaudeHook 把 mobilecoding 的权限 hook 注入到 ~/.claude/settings.json。
-// settings.json 是基础配置，--settings xxx.json 会合并而非替换，所以只需注入基础文件。
-func installClaudeHook(cfg config.Config, hookURL string, logger *logx.Logger) error {
-	path, err := hook.DefaultSettingsPath()
-	if err != nil {
-		return err
+func startNativeControlSession(ctx context.Context, cfg config.Config, mgr *session.Manager, logger *logx.Logger) error {
+	cwd, _ := os.Getwd()
+	req := engine.ExecRequest{
+		Command: cfg.DefaultCmd,
+		Args:    cfg.DefaultArgs,
+		CWD:     cwd,
+		Cols:    120,
+		Rows:    32,
 	}
+	run := engine.NewNativeRunner(req.Command)
+	sid, err := mgr.Start(ctx, req, run)
+	if err != nil {
+		return fmt.Errorf("start native control session: %w", err)
+	}
+	logger.Info("startup", "native control session started: command=%s args=%v sessionId=%s cwd=%s", req.Command, req.Args, sid, req.CWD)
+	return nil
+}
+
+// installClaudeHook 把 mobilecoding 的权限 hook 注入到当前项目本地 settings.local.json。
+// 同时移除历史版本写入用户级 settings.json 的 mobilecoding hook，避免跨项目权限串线。
+func installClaudeHook(cfg config.Config, hookURL, cwd string, logger *logx.Logger) error {
+	if globalPath, err := hook.DefaultSettingsPath(); err == nil {
+		if err := hook.NewSettingsInjector(globalPath).RemoveInstalledHook(); err != nil {
+			logger.Warn("startup", "remove global Claude hook skipped: %v", err)
+		}
+	}
+
+	path := hook.ProjectSettingsPath(cwd)
 	inj := hook.NewSettingsInjector(path)
 	if err := inj.Install(hook.HookConfig{
 		URL:     hookURL,
@@ -309,8 +392,48 @@ func pickHookPort(mainPort string) string {
 	return strconv.Itoa(n + 1)
 }
 
+// pickDevWSPort 决定开发 WS 监听端口：MOBILECODING_DEV_WS_PORT > 主端口+2。
+func pickDevWSPort(mainPort string) string {
+	if v := os.Getenv("MOBILECODING_DEV_WS_PORT"); v != "" {
+		return v
+	}
+	n, err := strconv.Atoi(mainPort)
+	if err != nil {
+		return "8445"
+	}
+	return strconv.Itoa(n + 2)
+}
+
+// saveRequest 异步写入请求。
+type saveRequest struct {
+	sessionID string
+	event     *projection.Event
+}
+
+// startAsyncWriter 启动异步消息写入 goroutine。
+// 从 saveCh 读取请求，写入数据库后将 seq 回填到 event。
+func startAsyncWriter(ctx context.Context, msgStore *store.MessageStore, logger *logx.Logger) chan<- saveRequest {
+	ch := make(chan saveRequest, 512)
+	go func() {
+		for {
+			select {
+			case req := <-ch:
+				seq, err := msgStore.SaveMessage(req.sessionID, *req.event)
+				if err != nil {
+					logger.Error("store", "async save failed: %v", err)
+				} else {
+					req.event.Seq = seq
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch
+}
+
 // forwardSessionEvents 从 session.Manager 读取事件并广播到所有 WebSocket 连接
-func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger) {
+func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub, logger *logx.Logger, saveCh chan<- saveRequest) {
 	input := mgr.Output()
 	fwdCount := 0
 
@@ -331,6 +454,10 @@ func forwardSessionEvents(ctx context.Context, mgr *session.Manager, hub *ws.Hub
 			logger.Debug("broadcast", "event kind=%s projected=%d", ev.Kind, len(projEvents))
 
 			for _, pe := range projEvents {
+				// 异步持久化消息，seq 由 writer goroutine 分配后回填
+				if saveCh != nil {
+					saveCh <- saveRequest{sessionID: sid, event: &pe}
+				}
 				env, err := ws.ProjectionToEnvelope(pe)
 				if err != nil {
 					logger.Error("broadcast", "projectionToEnvelope failed: %v", err)

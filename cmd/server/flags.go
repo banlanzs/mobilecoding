@@ -11,6 +11,7 @@ type serverFlags struct {
 	logLevel    string
 	defaultCmd  string
 	defaultArgs string
+	launchMode  string
 	showVersion bool
 	showHelp    bool
 }
@@ -26,6 +27,7 @@ func parseServerFlags(args []string) (serverFlags, error) {
 	fs.StringVar(&f.logLevel, "log-level", "", "log level: debug|info|warn|error")
 	fs.StringVar(&f.defaultCmd, "default-command", "", "default AI command (claude|codex|opencode|aichat)")
 	fs.StringVar(&f.defaultArgs, "default-args", "", "default args for AI command (space-separated, quoted)")
+	fs.StringVar(&f.launchMode, "launch-mode", "", "launch mode: managed|remote-control")
 	fs.BoolVar(&f.showVersion, "version", false, "print version and exit")
 	fs.BoolVar(&f.showHelp, "help", false, "print help and exit")
 

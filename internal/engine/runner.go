@@ -21,13 +21,14 @@ type Event struct {
 }
 
 type ExecRequest struct {
-	Command         string
-	Args            []string
-	CWD             string
-	Env             []string
-	Cols            int
-	Rows            int
-	VisibleTerminal bool // 是否在可视化终端窗口中启动（Windows）
+	Command          string
+	Args             []string
+	CWD              string
+	Env              []string
+	Cols             int
+	Rows             int
+	VisibleTerminal  bool   // 是否在可视化终端窗口中启动（Windows）
+	ResumeSessionID  string // Claude --resume 用的 session_id（跨会话恢复）
 }
 
 type InteractiveStateProvider interface {
@@ -36,6 +37,11 @@ type InteractiveStateProvider interface {
 
 type TurnStateProvider interface {
 	HasActiveTurn() bool
+}
+
+// ResumeSessionIDProvider 支持获取当前会话的 resume ID（用于跨会话恢复）。
+type ResumeSessionIDProvider interface {
+	GetResumeSessionID() string
 }
 
 type Runner interface {
