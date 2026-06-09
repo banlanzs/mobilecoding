@@ -1,6 +1,6 @@
 {
   "name": "@banlan/mobilecoding",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
   "main": "bin/mobilecoding.js",
   "bin": {
@@ -8,12 +8,25 @@
     "mobilecoding-relay": "bin/relay.js",
     "mc": "bin/mc.js"
   },
-  "files": ["bin/", "dist/", "README.md", "LICENSE"],
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "go build -o dist/mobilecoding.exe ./cmd/server && go build -o dist/relay.exe ./cmd/relay && go build -o dist/mc.exe ./cmd/mobilecoding",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["ai", "cli", "claude", "codex", "remote", "mobile", "pwa"],
+  "keywords": [
+    "ai",
+    "cli",
+    "claude",
+    "codex",
+    "remote",
+    "mobile",
+    "pwa"
+  ],
   "author": "banlanzs",
   "license": "MIT",
   "repository": {
