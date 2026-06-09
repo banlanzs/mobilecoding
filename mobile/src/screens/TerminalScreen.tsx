@@ -218,6 +218,8 @@ export function TerminalScreen(props?: any) {
   const [models, setModels] = useState<{ label: string; value: string }[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [loadingModels, setLoadingModels] = useState(false)
+  const [runtimeArgs, setRuntimeArgs] = useState<string[]>([])
+  const [settingsPath, setSettingsPath] = useState<string>('')
 
   const host = routeParams.host || '10.0.2.2'
   const port = routeParams.port || '8445'
@@ -325,12 +327,31 @@ export function TerminalScreen(props?: any) {
     handleStartSession()
   }, [connected, sessionStarted])
 
-  // 连接成功后自动拉取历史消息（支持 --resume 恢复会话）
+  // 连接成功后获取 runtime 信息（含 --settings 路径）和历史消息
   useEffect(() => {
     if (!connected || !token) return
     const restScheme = useWss ? 'https' : 'http'
-    // 先获取当前活跃会话 ID，再拉取该会话的历史消息
-    const sessionsUrl = `${restScheme}://${host}:${port}/api/v1/sessions`
+    const baseUrl = `${restScheme}://${host}:${port}`
+
+    // 1. 获取 runtime 信息，提取 --settings 路径
+    fetch(`${baseUrl}/version`)
+      .then(res => res.ok ? res.json() : null)
+      .then((data: any) => {
+        if (!data?.runtime) return
+        const args: string[] = data.runtime.defaultArgs || []
+        setRuntimeArgs(args)
+        // 从 args 中提取 --settings <path>
+        const settingsIdx = args.indexOf('--settings')
+        if (settingsIdx >= 0 && settingsIdx + 1 < args.length) {
+          const path = args[settingsIdx + 1]
+          setSettingsPath(path)
+          console.log('[Terminal] settings path:', path)
+        }
+      })
+      .catch(err => console.warn('[Terminal] version fetch failed:', err?.message))
+
+    // 2. 获取历史消息
+    const sessionsUrl = `${baseUrl}/api/v1/sessions`
     console.log('[Terminal] fetching sessions for history')
     fetch(sessionsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.ok ? res.json() : Promise.reject(new Error(`sessions HTTP ${res.status}`)))
@@ -415,7 +436,12 @@ export function TerminalScreen(props?: any) {
     setShowModelPicker(true)
     try {
       const scheme = useWss ? 'https' : 'http'
-      const url = `${scheme}://${host}:${port}/api/v1/models`
+      // 带 settings 参数获取当前配置商的模型列表
+      let url = `${scheme}://${host}:${port}/api/v1/models`
+      if (settingsPath) {
+        url += `?settings=${encodeURIComponent(settingsPath)}`
+      }
+      console.log('[Models] fetching:', url)
       const res = await fetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: { label: string; value: string }[] = await res.json()
@@ -437,10 +463,17 @@ export function TerminalScreen(props?: any) {
   const applyModelSwitch = async () => {
     if (!clientRef.current) return
     try {
+      // 保留原始 args（含 --settings 等），只替换 --model
       const args: string[] = []
+      // 注入原始 runtime args（关键是 --settings <path>）
+      for (let i = 0; i < runtimeArgs.length; i++) {
+        if (runtimeArgs[i] === '--model') { i++; continue }
+        args.push(runtimeArgs[i])
+      }
       if (selectedModel) {
         args.push('--model', selectedModel)
       }
+      console.log('[Terminal] restarting with args:', args)
       await clientRef.current.send('session.start', {
         command: 'claude',
         args,
