@@ -1,32 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert, ScrollView, Pressable } from 'react-native'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert, Pressable, StatusBar, Modal, ActivityIndicator, ScrollView } from 'react-native'
+import { Picker } from '@react-native-picker/picker'
 import { createMessageStore } from '../stores/useMessageStore'
 import { MessageCard } from '../components/terminal/MessageCard'
 import { GitDiffModal } from '../components/terminal/GitDiffModal'
-
-// 所有可用斜杠命令（与 Claude Code CLI 对齐）
-const SLASH_COMMANDS: { cmd: string; desc: string }[] = [
-  { cmd: '/compact', desc: '压缩对话上下文' },
-  { cmd: '/clear', desc: '清空对话' },
-  { cmd: '/help', desc: '显示帮助' },
-  { cmd: '/cost', desc: '显示 Token 用量' },
-  { cmd: '/doctor', desc: '安装/修复 Claude Code' },
-  { cmd: '/init', desc: '初始化项目记忆文件' },
-  { cmd: '/status', desc: '显示会话状态' },
-  { cmd: '/resume', desc: '恢复之前的会话' },
-  { cmd: '/model', desc: '显示/切换模型' },
-  { cmd: '/memory', desc: '查看记忆文件' },
-  { cmd: '/add-dir', desc: '添加工作目录' },
-  { cmd: '/agents', desc: '查看 Agent 列表' },
-  { cmd: '/bashes', desc: '查看运行中的 Bash' },
-  { cmd: '/context', desc: '查看上下文用量' },
-  { cmd: '/output-style', desc: '切换输出风格' },
-  { cmd: '/config', desc: '查看配置' },
-  { cmd: '/upgrade', desc: '升级 Claude Code' },
-  { cmd: '/login', desc: '登录' },
-  { cmd: '/logout', desc: '登出' },
-  { cmd: '/bug', desc: '提交 Bug 报告' },
-]
 
 class MockWSClient {
   private statusListeners = new Set<(status: 'idle' | 'connecting' | 'connected' | 'closed') => void>()
@@ -196,6 +173,33 @@ class RealMobilecodingClient {
   private setStatus(status: 'idle' | 'connecting' | 'connected' | 'closed') { this.statusListeners.forEach(l => l(status)) }
 }
 
+// 斜杠命令定义（本地处理 vs 透传给 CLI）
+const SLASH_COMMANDS = [
+  { cmd: '/compact', desc: '压缩对话上下文', mode: 'passthrough' as const },
+  { cmd: '/clear', desc: '清空本地消息', mode: 'local' as const },
+  { cmd: '/help', desc: '显示帮助信息', mode: 'passthrough' as const },
+  { cmd: '/cost', desc: '显示 Token 用量', mode: 'passthrough' as const },
+  { cmd: '/model', desc: '切换模型', mode: 'local' as const },
+  { cmd: '/status', desc: '显示会话状态', mode: 'passthrough' as const },
+  { cmd: '/context', desc: '查看上下文用量', mode: 'passthrough' as const },
+  { cmd: '/memory', desc: '查看记忆文件', mode: 'passthrough' as const },
+  { cmd: '/agents', desc: '查看 Agent 列表', mode: 'passthrough' as const },
+  { cmd: '/bashes', desc: '查看运行中的 Bash', mode: 'passthrough' as const },
+  { cmd: '/config', desc: '查看配置', mode: 'passthrough' as const },
+  { cmd: '/init', desc: '初始化项目记忆文件', mode: 'passthrough' as const },
+  { cmd: '/upgrade', desc: '升级 Claude Code', mode: 'passthrough' as const },
+  { cmd: '/bug', desc: '提交 Bug 报告', mode: 'passthrough' as const },
+  { cmd: '/doctor', desc: '安装/修复 Claude Code', mode: 'passthrough' as const },
+  { cmd: '/login', desc: '登录', mode: 'passthrough' as const },
+  { cmd: '/logout', desc: '登出', mode: 'passthrough' as const },
+  { cmd: '/output-style', desc: '切换输出风格', mode: 'passthrough' as const },
+  { cmd: '/add-dir', desc: '添加工作目录', mode: 'passthrough' as const },
+  { cmd: '/resume', desc: '恢复之前的会话', mode: 'passthrough' as const },
+  { cmd: '/terminal-setup', desc: '终端设置', mode: 'passthrough' as const },
+  { cmd: '/todos', desc: '查看待办事项', mode: 'passthrough' as const },
+  { cmd: '/export', desc: '导出对话', mode: 'passthrough' as const },
+]
+
 const messageStore = createMessageStore()
 
 export function TerminalScreen(props?: any) {
@@ -210,6 +214,10 @@ export function TerminalScreen(props?: any) {
   const [showGitDiff, setShowGitDiff] = useState(false)
   const [showSlashPicker, setShowSlashPicker] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
+  const [showModelPicker, setShowModelPicker] = useState(false)
+  const [models, setModels] = useState<{ label: string; value: string }[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
+  const [loadingModels, setLoadingModels] = useState(false)
 
   const host = routeParams.host || '10.0.2.2'
   const port = routeParams.port || '8445'
@@ -217,7 +225,7 @@ export function TerminalScreen(props?: any) {
   const path = routeParams.path || '/api/v1/ws'
   const useWss = routeParams.useWss ?? false
   const useMock = routeParams.useMock ?? false
-  const selectedModel = routeParams.model || ''
+  const initialModel = routeParams.model || ''
 
   const clientRef = useRef<MockWSClient | RealMobilecodingClient | null>(null)
 
@@ -294,8 +302,8 @@ export function TerminalScreen(props?: any) {
     try {
       // 构建启动参数，如果用户选择了模型则注入 --model 参数
       const args: string[] = []
-      if (selectedModel) {
-        args.push('--model', selectedModel)
+      if (initialModel) {
+        args.push('--model', initialModel)
       }
       const result = await clientRef.current.send('session.start', {
         command: 'claude',
@@ -360,6 +368,21 @@ export function TerminalScreen(props?: any) {
 
   const handleSend = () => {
     if (!input.trim() || !clientRef.current || !connected) return
+
+    // 本地处理斜杠命令
+    const trimmed = input.trim()
+    if (trimmed === '/clear') {
+      messageStore.getState().resetMessages()
+      setInput('')
+      return
+    }
+    if (trimmed === '/model') {
+      fetchModelsAndShowPicker()
+      setInput('')
+      return
+    }
+
+    // 其他命令透传给 CLI
     messageStore.getState().addUserMessage(input, 'default-session')
     clientRef.current.send('session.input', { text: input })
       .catch(err => console.error('发送失败:', err))
@@ -369,7 +392,7 @@ export function TerminalScreen(props?: any) {
 
   const handleInputChange = (text: string) => {
     setInput(text)
-    // 检测是否输入斜杠命令
+    // 检测斜杠命令输入
     if (text.startsWith('/') && !text.includes(' ')) {
       setSlashFilter(text)
       setShowSlashPicker(true)
@@ -383,10 +406,53 @@ export function TerminalScreen(props?: any) {
     setShowSlashPicker(false)
   }
 
-  // 过滤斜杠命令
   const filteredCommands = SLASH_COMMANDS.filter(c =>
     c.cmd.toLowerCase().includes(slashFilter.toLowerCase())
   )
+
+  const fetchModelsAndShowPicker = async () => {
+    setLoadingModels(true)
+    setShowModelPicker(true)
+    try {
+      const scheme = useWss ? 'https' : 'http'
+      const url = `${scheme}://${host}:${port}/api/v1/models`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: { label: string; value: string }[] = await res.json()
+      setModels(data)
+      if (data.length > 0) setSelectedModel(data[0].value)
+    } catch (err) {
+      console.warn('[Models] 获取失败:', err)
+      setModels([
+        { label: '默认模型', value: '' },
+        { label: 'Sonnet 4.6', value: 'claude-sonnet-4-6' },
+        { label: 'Opus 4.8', value: 'claude-opus-4-8' },
+      ])
+      setSelectedModel('')
+    } finally {
+      setLoadingModels(false)
+    }
+  }
+
+  const applyModelSwitch = async () => {
+    if (!clientRef.current) return
+    try {
+      const args: string[] = []
+      if (selectedModel) {
+        args.push('--model', selectedModel)
+      }
+      await clientRef.current.send('session.start', {
+        command: 'claude',
+        args,
+        cwd: '',
+        restart: true
+      })
+      Alert.alert('模型切换成功', `已切换到：${models.find(m => m.value === selectedModel)?.label || '默认模型'}`)
+      setShowModelPicker(false)
+    } catch (err: any) {
+      Alert.alert('切换失败', err?.message || '未知错误')
+    }
+  }
 
   const handleAbort = () => {
     if (!clientRef.current) return
@@ -397,8 +463,10 @@ export function TerminalScreen(props?: any) {
     setThinking(false)
   }
 
+  const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#ededed' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#ededed', paddingTop: statusBarHeight }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -435,15 +503,13 @@ export function TerminalScreen(props?: any) {
           contentContainerStyle={{ paddingVertical: 8 }}
         />
 
-        {/* 斜杠命令下拉选择器 */}
+        {/* 斜杠命令下拉 */}
         {showSlashPicker && filteredCommands.length > 0 && (
           <View style={{
             maxHeight: 200,
             backgroundColor: '#fff',
-            borderTopWidth: 1,
-            borderTopColor: '#e0e0e0',
-            borderBottomWidth: 1,
-            borderBottomColor: '#e0e0e0',
+            borderTopWidth: 1, borderTopColor: '#d9d9d9',
+            borderBottomWidth: 1, borderBottomColor: '#d9d9d9',
           }}>
             <FlatList
               data={filteredCommands}
@@ -452,11 +518,9 @@ export function TerminalScreen(props?: any) {
                 <Pressable
                   onPress={() => selectSlashCommand(item.cmd)}
                   style={({ pressed }) => ({
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
+                    paddingHorizontal: 16, paddingVertical: 10,
                     backgroundColor: pressed ? '#f0f0f0' : '#fff',
-                    borderBottomWidth: 0.5,
-                    borderBottomColor: '#eee',
+                    borderBottomWidth: 0.5, borderBottomColor: '#eee',
                   })}
                 >
                   <Text style={{ fontSize: 14, color: '#333', fontWeight: '500', marginBottom: 2 }}>
@@ -519,7 +583,7 @@ export function TerminalScreen(props?: any) {
           <TextInput
             value={input}
             onChangeText={handleInputChange}
-            placeholder={connected ? '输入消息，输入 / 选择命令...' : '连接中...'}
+            placeholder={connected ? '输入消息，/ 打开命令...' : '连接中...'}
             editable={connected}
             style={{ flex: 1, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 12, height: 42, color: '#000' }}
           />
@@ -540,6 +604,56 @@ export function TerminalScreen(props?: any) {
         token={token}
         useWss={useWss}
       />
+
+      {/* 模型选择 Modal */}
+      <Modal visible={showModelPicker} animationType="slide" onRequestClose={() => setShowModelPicker(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: statusBarHeight }}>
+          <View style={{
+            paddingHorizontal: 16, paddingVertical: 12,
+            borderBottomWidth: 1, borderBottomColor: '#e5e5e5',
+            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+            backgroundColor: '#f7f7f7'
+          }}>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: '#333' }}>选择模型</Text>
+            <Pressable onPress={() => setShowModelPicker(false)} style={{ padding: 8 }}>
+              <Text style={{ fontSize: 20, color: '#666' }}>✕</Text>
+            </Pressable>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: 'space-between', padding: 16 }}>
+            {loadingModels ? (
+              <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+            ) : (
+              <Picker
+                selectedValue={selectedModel}
+                onValueChange={(value) => setSelectedModel(value)}
+                style={{ flexGrow: 0 }}
+              >
+                {models.map((m) => (
+                  <Picker.Item key={m.value} label={m.label} value={m.value} />
+                ))}
+              </Picker>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="取消"
+                  onPress={() => setShowModelPicker(false)}
+                  color="#666"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="应用模型"
+                  onPress={applyModelSwitch}
+                  disabled={loadingModels}
+                />
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
