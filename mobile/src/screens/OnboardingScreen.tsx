@@ -1,13 +1,22 @@
-import React, { useState } from 'react'
-import { SafeAreaView, Text, Button, TextInput, View, Alert } from 'react-native'
+import React, { useState, useEffect } from 'react'
+import { SafeAreaView, Text, Button, TextInput, View, Alert, ActivityIndicator } from 'react-native'
+import { Picker } from '@react-native-picker/picker'
 import { adaptConnection, looksLikeConnectionUrl } from '../services/network/ConnectionAdapter'
 import { AuthService } from '../services/auth/AuthService'
 
 const authService = new AuthService()
 
+interface ModelOption {
+  label: string
+  value: string
+}
+
 export function OnboardingScreen({ navigation }: any) {
   const [connectionUrl, setConnectionUrl] = useState('')
   const [adapted, setAdapted] = useState<any>(null)
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
+  const [loadingModels, setLoadingModels] = useState(false)
 
   const handlePreview = () => {
     if (!looksLikeConnectionUrl(connectionUrl.trim())) {
@@ -20,6 +29,38 @@ export function OnboardingScreen({ navigation }: any) {
       return
     }
     setAdapted(result)
+    fetchModels(result)
+  }
+
+  const fetchModels = async (connection: any) => {
+    setLoadingModels(true)
+    try {
+      const scheme = connection.useWss ? 'https' : 'http'
+      const url = `${scheme}://${connection.host}:${connection.port}/api/v1/models`
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const data: ModelOption[] = await response.json()
+      setModels(data)
+      // 默认选中第一个模型（通常是 Sonnet）
+      if (data.length > 0) {
+        setSelectedModel(data[0].value)
+      }
+    } catch (err) {
+      console.warn('获取模型列表失败:', err)
+      // 使用默认模型列表
+      const fallback: ModelOption[] = [
+        { label: '默认模型', value: '' },
+        { label: 'Sonnet 4.6', value: 'claude-sonnet-4-6' },
+        { label: 'Opus 4.8', value: 'claude-opus-4-8' },
+        { label: 'Haiku 4.5', value: 'claude-haiku-4-5' },
+      ]
+      setModels(fallback)
+      setSelectedModel(fallback[0].value)
+    } finally {
+      setLoadingModels(false)
+    }
   }
 
   const handleConnect = async () => {
@@ -44,6 +85,7 @@ export function OnboardingScreen({ navigation }: any) {
         token: adapted.token,
         path: adapted.path,
         useWss: adapted.useWss,
+        model: selectedModel,
       })
     } catch (err) {
       Alert.alert('保存失败', '请重试')
@@ -77,11 +119,27 @@ export function OnboardingScreen({ navigation }: any) {
       />
 
       {adapted && (
-        <View style={{ padding: 12, backgroundColor: '#e8f5e9', borderRadius: 8, marginBottom: 16 }}>
-          <Text style={{ fontWeight: '600', marginBottom: 4 }}>{adapted.label}</Text>
+        <View style={{ padding: 12, backgroundColor: '#e8f5e9', borderRadius: 8, marginBottom: 16, gap: 10 }}>
+          <Text style={{ fontWeight: '600' }}>{adapted.label}</Text>
           <Text style={{ fontSize: 12, color: '#333' }}>
             {adapted.useWss ? 'wss' : 'ws'}://{adapted.host}:{adapted.port}{adapted.path}
           </Text>
+          {/* 模型选择器 */}
+          <View style={{ backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginTop: 4 }}>
+            {loadingModels ? (
+              <ActivityIndicator style={{ padding: 10 }} />
+            ) : (
+              <Picker
+                selectedValue={selectedModel}
+                onValueChange={(value) => setSelectedModel(value)}
+                style={{ height: 48 }}
+              >
+                {models.map((m) => (
+                  <Picker.Item key={m.value} label={m.label} value={m.value} />
+                ))}
+              </Picker>
+            )}
+          </View>
         </View>
       )}
 

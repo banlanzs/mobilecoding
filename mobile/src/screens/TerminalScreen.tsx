@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert } from 'react-native'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert, ScrollView, Pressable } from 'react-native'
 import { createMessageStore } from '../stores/useMessageStore'
 import { MessageCard } from '../components/terminal/MessageCard'
+import { GitDiffModal } from '../components/terminal/GitDiffModal'
+
+// 斜杠命令快捷片段
+const QUICK_CHIPS = ['/clear', '/compact', '/help', 'git status', 'git diff', 'npm test']
 
 class MockWSClient {
   private statusListeners = new Set<(status: 'idle' | 'connecting' | 'connected' | 'closed') => void>()
@@ -182,6 +186,7 @@ export function TerminalScreen(props?: any) {
   const [thinking, setThinking] = useState(false)
   const [permissionPrompt, setPermissionPrompt] = useState<any>(null)
   const [sessionStarted, setSessionStarted] = useState(false)
+  const [showGitDiff, setShowGitDiff] = useState(false)
 
   const host = routeParams.host || '10.0.2.2'
   const port = routeParams.port || '8445'
@@ -189,6 +194,7 @@ export function TerminalScreen(props?: any) {
   const path = routeParams.path || '/api/v1/ws'
   const useWss = routeParams.useWss ?? false
   const useMock = routeParams.useMock ?? false
+  const selectedModel = routeParams.model || ''
 
   const clientRef = useRef<MockWSClient | RealMobilecodingClient | null>(null)
 
@@ -263,9 +269,14 @@ export function TerminalScreen(props?: any) {
   const handleStartSession = async () => {
     if (!clientRef.current || sessionStarted) return
     try {
+      // 构建启动参数，如果用户选择了模型则注入 --model 参数
+      const args: string[] = []
+      if (selectedModel) {
+        args.push('--model', selectedModel)
+      }
       const result = await clientRef.current.send('session.start', {
         command: 'claude',
-        args: [],
+        args,
         cwd: ''
       })
       console.log('[Terminal] Session started:', result)
@@ -350,7 +361,20 @@ export function TerminalScreen(props?: any) {
       >
         {/* 顶栏 */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
+            {/* Git Diff 按钮 */}
+            <Pressable
+              onPress={() => setShowGitDiff(true)}
+              style={({ pressed }) => ({
+                padding: 6,
+                borderRadius: 8,
+                backgroundColor: pressed ? '#d0d0d0' : '#f0f0f0',
+              })}
+            >
+              <Text style={{ fontSize: 16 }}>📁</Text>
+            </Pressable>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
             <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
@@ -365,6 +389,31 @@ export function TerminalScreen(props?: any) {
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingVertical: 8 }}
         />
+
+        {/* 快捷命令片段 */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, maxHeight: 44 }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 6, gap: 8, alignItems: 'center', backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#e0e0e0' }}
+        >
+          {QUICK_CHIPS.map((chip) => (
+            <Pressable
+              key={chip}
+              onPress={() => setInput((prev) => (prev ? `${prev} ${chip}` : chip))}
+              style={({ pressed }) => ({
+                backgroundColor: pressed ? '#d0d0d0' : '#ffffff',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderWidth: 1,
+                borderColor: '#d0d0d0',
+              })}
+            >
+              <Text style={{ fontSize: 13, color: '#333' }}>{chip}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
 
         {/* Thinking 指示器 */}
         {thinking && (
@@ -427,6 +476,16 @@ export function TerminalScreen(props?: any) {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* Git Diff Modal */}
+      <GitDiffModal
+        visible={showGitDiff}
+        onClose={() => setShowGitDiff(false)}
+        host={host}
+        port={port}
+        token={token}
+        useWss={useWss}
+      />
     </SafeAreaView>
   )
 }
