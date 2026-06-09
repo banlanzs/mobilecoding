@@ -1,6 +1,8 @@
+// Session 跨子命令共享的会话状态。
+// 用于 claude/codex 等 mc 模式子命令传递配置。
 package main
 
-// Session 跨模式共享的会话状态。
+// Session 描述一个 mc 模式会话：要运行的本地 CLI 进程，以及如何连接到 server。
 type Session struct {
 	Command    string   // 要运行的命令（claude/codex/...）
 	Args       []string // 命令参数

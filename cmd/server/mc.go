@@ -1,5 +1,4 @@
-// mobilecoding CLI：启动 server + 本地 Claude，手机扫码作为遥控器共存。
-// 用法：mc claude [--settings xxx.json]
+// mobilecoding CLI：claude/codex 子命令 — 启动 server + 本地 CLI，手机扫码作为遥控器。
 package main
 
 import (
@@ -8,34 +7,7 @@ import (
 	"os"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	switch os.Args[1] {
-	case "claude":
-		runClaude(os.Args[2:])
-	case "codex":
-		runGeneric("codex", os.Args[2:])
-	default:
-		printUsage()
-		os.Exit(1)
-	}
-}
-
-func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: mc <command> [args...]\n\n")
-	fmt.Fprintf(os.Stderr, "Commands:\n")
-	fmt.Fprintf(os.Stderr, "  claude [flags]   Start Claude Code + server (remote control mode)\n")
-	fmt.Fprintf(os.Stderr, "  codex  [flags]   Start Codex + server\n")
-	fmt.Fprintf(os.Stderr, "\nFlags (claude):\n")
-	fmt.Fprintf(os.Stderr, "  -settings <path>   Claude settings file\n")
-	fmt.Fprintf(os.Stderr, "  -model <model>     Model override\n")
-	fmt.Fprintf(os.Stderr, "  -port <port>       Server port (default: 8443)\n")
-}
-
+// runClaude 处理 `mobilecoding claude [flags]` 子命令。
 func runClaude(extraArgs []string) {
 	fs := flag.NewFlagSet("claude", flag.ContinueOnError)
 	settings := fs.String("settings", "", "Claude settings file path")
@@ -90,6 +62,11 @@ func displayClaudeModel(model string) string {
 	return model
 }
 
+// runCodex 处理 `mobilecoding codex [flags]` 子命令。
+func runCodex(extraArgs []string) {
+	runGeneric("codex", extraArgs)
+}
+
 func runGeneric(command string, extraArgs []string) {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	port := fs.String("port", "8443", "Server port")
@@ -107,4 +84,16 @@ func runGeneric(command string, extraArgs []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// printMCUsage 打印 mc 模式子命令的用法。
+func printMCUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: mobilecoding <command> [args...]\n\n")
+	fmt.Fprintf(os.Stderr, "Commands:\n")
+	fmt.Fprintf(os.Stderr, "  claude [flags]   Start Claude Code + server (remote control mode)\n")
+	fmt.Fprintf(os.Stderr, "  codex  [flags]   Start Codex + server\n")
+	fmt.Fprintf(os.Stderr, "\nFlags (claude):\n")
+	fmt.Fprintf(os.Stderr, "  -settings <path>   Claude settings file\n")
+	fmt.Fprintf(os.Stderr, "  -model <model>     Model override\n")
+	fmt.Fprintf(os.Stderr, "  -port <port>       Server port (default: 8443)\n")
 }
