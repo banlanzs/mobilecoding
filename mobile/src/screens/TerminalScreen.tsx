@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform } from 'react-native'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert } from 'react-native'
 import { createMessageStore } from '../stores/useMessageStore'
 import { MessageCard } from '../components/terminal/MessageCard'
 
@@ -194,18 +194,36 @@ export function TerminalScreen(props?: any) {
 
   useEffect(() => {
     const unsubStore = messageStore.subscribe((state) => {
-      console.log('[Store] messages:', state.messages.length, 'turnActive:', state.turnActive, 'thinking:', state.thinking)
       setMessages([...state.messages])
       setTurnActive(state.turnActive)
       setThinking(state.thinking)
       setPermissionPrompt(state.permissionPrompt)
     })
 
+    // 禁用返回手势，防止误触回到 Onboarding
+    if (props?.navigation) {
+      props.navigation.setOptions({ gestureEnabled: false, headerBackVisible: false })
+    }
+
+    // 拦截 Android 返回键，弹窗确认退出
+    const onBackPress = () => {
+      Alert.alert('退出会话', '确定要退出当前会话吗？', [
+        { text: '取消', style: 'cancel' },
+        { text: '退出', style: 'destructive', onPress: () => {
+          clientRef.current?.disconnect()
+          messageStore.getState().resetMessages()
+          props?.navigation?.goBack()
+        }}
+      ])
+      return true
+    }
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress)
+
     if (routeParams.host && routeParams.token) {
       setTimeout(() => handleConnect(), 100)
     }
 
-    return () => { unsubStore(); clientRef.current?.disconnect(); clientRef.current = null }
+    return () => { backSub.remove(); unsubStore(); clientRef.current?.disconnect(); clientRef.current = null }
   }, [])
 
   const handleConnect = () => {
@@ -264,22 +282,28 @@ export function TerminalScreen(props?: any) {
   useEffect(() => {
     if (!connected || !token) return
     const restScheme = useWss ? 'https' : 'http'
-    const restUrl = `${restScheme}://${host}:${port}/api/v1/messages?session_id=default-session&limit=50`
-    console.log('[Terminal] fetching history:', restUrl)
-    fetch(restUrl, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
+    // 先获取当前活跃会话 ID，再拉取该会话的历史消息
+    const sessionsUrl = `${restScheme}://${host}:${port}/api/v1/sessions`
+    console.log('[Terminal] fetching sessions for history')
+    fetch(sessionsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`sessions HTTP ${res.status}`)))
+      .then((sessions: Array<{ id: string }>) => {
+        const activeSessionId = sessions?.[0]?.id
+        if (!activeSessionId) {
+          console.log('[Terminal] no active session found')
+          return
+        }
+        const msgsUrl = `${restScheme}://${host}:${port}/api/v1/messages?session_id=${activeSessionId}&limit=50`
+        console.log('[Terminal] fetching history:', msgsUrl)
+        return fetch(msgsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(res => res.ok ? res.json() : Promise.reject(new Error(`messages HTTP ${res.status}`)))
       })
-      .then((data: { messages?: Array<{ type: string; content: string; seq: number }> }) => {
-        if (!data.messages || data.messages.length === 0) {
+      .then((data?: { messages?: Array<{ type: string; content: string; seq: number }> }) => {
+        if (!data?.messages || data.messages.length === 0) {
           console.log('[Terminal] no history messages')
           return
         }
         console.log(`[Terminal] loaded ${data.messages.length} history messages`)
-        // 按 seq 正序排列，逐条喂给 messageStore
         const sorted = [...data.messages].sort((a, b) => (a.seq || 0) - (b.seq || 0))
         for (const msg of sorted) {
           try {
@@ -291,7 +315,7 @@ export function TerminalScreen(props?: any) {
         }
       })
       .catch(err => {
-        console.warn('[Terminal] history fetch failed (expected for new sessions):', err?.message)
+        console.warn('[Terminal] history fetch failed:', err?.message)
       })
   }, [connected])
 
