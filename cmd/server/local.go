@@ -1,3 +1,4 @@
+// mobilecoding CLI：本地进程管理 — 启动 server 子进程并等待退出。
 package main
 
 import (
@@ -7,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -58,13 +58,16 @@ func runLocal(session *Session) SwitchSignal {
 	return ExitLoop
 }
 
+// startServer 启动 mobilecoding server 子进程（-launch-mode remote-control）。
+// 合并后使用 os.Executable() 自我调用，通过 "server" 子命令进入 server 模式。
 func startServer(session *Session) *exec.Cmd {
-	serverBin := findServerBinary()
-	if serverBin == "" {
-		fmt.Fprintf(os.Stderr, "找不到 mobilecoding 可执行文件，请先运行 make build\n")
+	serverBin, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "找不到当前可执行文件: %v\n", err)
 		return nil
 	}
 	args := []string{
+		"server",
 		"-port", session.Port,
 		"-launch-mode", "remote-control",
 		"-default-command", session.Command,
@@ -129,29 +132,6 @@ func waitForServer(addr string) bool {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return false
-}
-
-func findServerBinary() string {
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		candidates := []string{
-			filepath.Join(dir, "mobilecoding"),
-			filepath.Join(dir, "mobilecoding.exe"),
-			filepath.Join(dir, "..", "dist", "mobilecoding"),
-			filepath.Join(dir, "..", "dist", "mobilecoding.exe"),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				return c
-			}
-		}
-	}
-	for _, name := range []string{"mobilecoding", "mobilecoding.exe"} {
-		if _, err := exec.LookPath(name); err == nil {
-			return name
-		}
-	}
-	return ""
 }
 
 func printConnectInfo(session *Session) {

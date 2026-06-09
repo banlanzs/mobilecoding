@@ -35,6 +35,31 @@ const version = "0.1.0"
 var webAssets embed.FS
 
 func main() {
+	// 子命令路由
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "server":
+			// 显式 server 子命令：移除 "server" 参数，继续执行原有 server 逻辑
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+		case "relay":
+			runRelay(os.Args[2:])
+			return
+		case "claude":
+			runClaude(os.Args[2:])
+			return
+		case "codex":
+			runCodex(os.Args[2:])
+			return
+		case "version", "-version", "--version":
+			fmt.Println(version)
+			return
+		case "help", "-help", "--help":
+			printGlobalUsage()
+			return
+		}
+	}
+
+	// 无子命令或未识别参数 = 默认 server 行为（向后兼容）
 	flags, err := parseServerFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "flag parse: %v\n", err)
@@ -499,3 +524,40 @@ func firstNonEmpty(vals ...string) string {
 
 var _ = filepath.Join
 var _ = context.Background
+
+// printGlobalUsage 打印全局帮助信息，显示所有可用子命令。
+func printGlobalUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: mobilecoding [command] [flags]\n\n")
+	fmt.Fprintf(os.Stderr, "Commands:\n")
+	fmt.Fprintf(os.Stderr, "  (default)       Start mobilecoding server (same as 'server' subcommand)\n")
+	fmt.Fprintf(os.Stderr, "  server          Start mobilecoding server with HTTPS and WebSocket\n")
+	fmt.Fprintf(os.Stderr, "  relay           Connect to relay server as agent\n")
+	fmt.Fprintf(os.Stderr, "  claude          Start Claude Code + server (remote control mode)\n")
+	fmt.Fprintf(os.Stderr, "  codex           Start Codex + server (remote control mode)\n")
+	fmt.Fprintf(os.Stderr, "  version         Print version and exit\n")
+	fmt.Fprintf(os.Stderr, "  help            Print this help message\n")
+	fmt.Fprintf(os.Stderr, "\nServer Flags:\n")
+	fmt.Fprintf(os.Stderr, "  -port <port>               Listen port (default: 8443)\n")
+	fmt.Fprintf(os.Stderr, "  -ip <ip>                   Local IP for cert & QR code (auto-detect if omitted)\n")
+	fmt.Fprintf(os.Stderr, "  -workspace <path>          Workspace root directory\n")
+	fmt.Fprintf(os.Stderr, "  -auth-token <token>        Auth token for API access\n")
+	fmt.Fprintf(os.Stderr, "  -mtls <mode>               mTLS mode: none|optional|required\n")
+	fmt.Fprintf(os.Stderr, "  -log-level <level>         Log level: debug|info|warn|error\n")
+	fmt.Fprintf(os.Stderr, "  -default-command <cmd>     Default AI command (claude|codex|opencode|aichat)\n")
+	fmt.Fprintf(os.Stderr, "  -default-args <args>       Default args for AI command\n")
+	fmt.Fprintf(os.Stderr, "  -launch-mode <mode>        Launch mode: managed|remote-control\n")
+	fmt.Fprintf(os.Stderr, "\nRelay Flags:\n")
+	fmt.Fprintf(os.Stderr, "  -relay <url>               Relay server URL (wss://...)\n")
+	fmt.Fprintf(os.Stderr, "  -session <id>              Session ID (optional)\n")
+	fmt.Fprintf(os.Stderr, "  -insecure                  Skip TLS verification\n")
+	fmt.Fprintf(os.Stderr, "\nClaude/Codex Flags:\n")
+	fmt.Fprintf(os.Stderr, "  -settings <path>           Claude settings file (claude only)\n")
+	fmt.Fprintf(os.Stderr, "  -model <model>             Model override (claude only)\n")
+	fmt.Fprintf(os.Stderr, "  -port <port>               Server port (default: 8443)\n")
+	fmt.Fprintf(os.Stderr, "  -resume <id>               Resume session ID (claude only)\n")
+	fmt.Fprintf(os.Stderr, "\nExamples:\n")
+	fmt.Fprintf(os.Stderr, "  mobilecoding                              # Start server (default)\n")
+	fmt.Fprintf(os.Stderr, "  mobilecoding server -port 9000            # Start server on custom port\n")
+	fmt.Fprintf(os.Stderr, "  mobilecoding claude --model opus          # Start Claude with Opus model\n")
+	fmt.Fprintf(os.Stderr, "  mobilecoding relay -relay wss://...       # Connect to relay server\n")
+}

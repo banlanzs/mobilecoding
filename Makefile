@@ -10,8 +10,6 @@ build-web:
 # 构建后端
 build-go:
 	go build -o dist/mobilecoding.exe ./cmd/server
-	go build -o dist/relay.exe ./cmd/relay
-	go build -o dist/mc.exe ./cmd/mobilecoding
 
 # 清理构建产物
 clean:

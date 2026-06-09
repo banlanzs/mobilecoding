@@ -1,4 +1,4 @@
-// mobilecoding relay CLI：连接到 relay 服务器，转发终端 I/O 到手机。
+// mobilecoding CLI：relay 子命令 — 连接到 relay 服务器，转发终端 I/O 到手机。
 package main
 
 import (
@@ -16,11 +16,15 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/relay"
 )
 
-func main() {
-	relayURL := flag.String("relay", "wss://localhost:8443/relay/agent", "Relay server URL (use wss:// for TLS)")
-	sessionID := flag.String("session", "", "Session ID (optional, auto-generated if empty)")
-	insecure := flag.Bool("insecure", true, "Skip TLS certificate verification (for self-signed certs)")
-	flag.Parse()
+// runRelay 处理 `mobilecoding relay [flags]` 子命令。
+func runRelay(extraArgs []string) {
+	fs := flag.NewFlagSet("relay", flag.ContinueOnError)
+	relayURL := fs.String("relay", "wss://localhost:8443/relay/agent", "Relay server URL (use wss:// for TLS)")
+	sessionID := fs.String("session", "", "Session ID (optional, auto-generated if empty)")
+	insecure := fs.Bool("insecure", true, "Skip TLS certificate verification (for self-signed certs)")
+	if err := fs.Parse(extraArgs); err != nil {
+		os.Exit(1)
+	}
 
 	fmt.Printf("=== MobileCoding Relay CLI ===\n")
 	fmt.Printf("Connecting to relay: %s\n", *relayURL)
