@@ -45,11 +45,12 @@ export function MessageCard({ message }: MessageCardProps) {
 
   // ─── AI 文本回复：白色气泡，左对齐，思考内容默认折叠 ───
   if (message.type === 'text' || message.type === 'text_delta') {
+    const hasThinking = message.thinking && message.thinking !== message.text
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'flex-start', paddingHorizontal: 12, paddingVertical: 4 }}>
         <View style={{ flexShrink: 1, maxWidth: '78%', backgroundColor: '#ffffff', borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
           <Text selectable style={{ color: '#000', lineHeight: 22 }}>{message.text}</Text>
-          {message.thinking && <ThinkingBlock text={message.thinking} />}
+          {hasThinking && <ThinkingBlock text={message.thinking!} />}
         </View>
       </View>
     )
