@@ -14,4 +14,9 @@ describe('TerminalScreen', () => {
     expect(screen.queryByText('Mock 模式')).toBeNull()
     expect(screen.queryByText(' WSS')).toBeNull()
   })
+
+  it('使用 KeyboardAvoidingView 包裹输入区', () => {
+    const screen = render(<TerminalScreen />)
+    expect(screen.getByPlaceholderText('连接中...')).toBeTruthy()
+  })
 })

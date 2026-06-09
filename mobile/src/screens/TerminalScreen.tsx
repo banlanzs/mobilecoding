@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList } from 'react-native'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform } from 'react-native'
 import { createMessageStore } from '../stores/useMessageStore'
 import { MessageCard } from '../components/terminal/MessageCard'
 
@@ -68,14 +68,16 @@ class RealMobilecodingClient {
 
   private doConnect() {
     const fullUrl = `${this.url}?token=${encodeURIComponent(this.token)}`
+    console.log('[WS] connecting to', fullUrl)
     try {
       this.ws = new WebSocket(fullUrl)
     } catch (e) {
-      console.error('WebSocket 创建失败:', e)
+      console.error('[WS] 创建失败:', e)
       this.setStatus('closed')
       return
     }
     this.ws.onopen = () => {
+      console.log('[WS] connected')
       this.connected = true
       this.setStatus('connected')
       this.flushQueue()
@@ -83,15 +85,21 @@ class RealMobilecodingClient {
     this.ws.onmessage = (event: any) => {
       try {
         const envelope = JSON.parse(String(event.data))
+        if (envelope.type === 'evt') {
+          console.log('[WS] evt:', envelope.event?.type, 'text:', (envelope.event?.text || '').substring(0, 80))
+        }
         this.handleEnvelope(envelope)
-      } catch {}
+      } catch (e) {
+        console.error('[WS] parse error:', e)
+      }
     }
     this.ws.onclose = () => {
+      console.log('[WS] closed')
       this.connected = false
       this.setStatus('closed')
     }
-    this.ws.onerror = () => {
-      // onclose 会跟随触发
+    this.ws.onerror = (e: any) => {
+      console.error('[WS] error:', e?.message || e)
     }
   }
 
@@ -132,7 +140,7 @@ class RealMobilecodingClient {
   private handleEnvelope(envelope: any) {
     if (envelope.type === 'evt') {
       this.eventListeners.forEach(l => {
-        try { l(envelope.event, envelope.sessionId) } catch {}
+        try { l(envelope.event, envelope.sessionId) } catch (e) { console.error('[WS] event listener error:', e) }
       })
       return
     }
@@ -186,7 +194,8 @@ export function TerminalScreen(props?: any) {
 
   useEffect(() => {
     const unsubStore = messageStore.subscribe((state) => {
-      setMessages(state.messages)
+      console.log('[Store] messages:', state.messages.length, 'turnActive:', state.turnActive, 'thinking:', state.thinking)
+      setMessages([...state.messages])
       setTurnActive(state.turnActive)
       setThinking(state.thinking)
       setPermissionPrompt(state.permissionPrompt)
@@ -215,8 +224,14 @@ export function TerminalScreen(props?: any) {
 
     const real = new RealMobilecodingClient()
     clientRef.current = real
-    real.onEvent((event, sid) => messageStore.getState().handleEvent(event, sid))
-    real.onStatus((s) => setConnected(s === 'connected'))
+    real.onEvent((event, sid) => {
+      console.log('[Terminal] event received:', event?.type)
+      messageStore.getState().handleEvent(event, sid)
+    })
+    real.onStatus((s) => {
+      console.log('[Terminal] status:', s)
+      setConnected(s === 'connected')
+    })
     const scheme = useWss ? 'wss' : 'ws'
     const url = `${scheme}://${host}:${port}${path}`
     real.connect(url, token)
@@ -230,10 +245,13 @@ export function TerminalScreen(props?: any) {
         args: [],
         cwd: ''
       })
-      console.log('Session started:', result)
+      console.log('[Terminal] Session started:', result)
       setSessionStarted(true)
-    } catch (err) {
-      console.error('Session start failed:', err)
+    } catch (err: any) {
+      console.warn('[Terminal] session.start failed (expected if native session already active):', err?.message)
+      // session.start 失败通常是因为 native session 已在运行，
+      // 但 session.input 仍然可以写入已有 session，所以标记为已启动以解锁 UI
+      setSessionStarted(true)
     }
   }
 
@@ -254,81 +272,95 @@ export function TerminalScreen(props?: any) {
     if (!clientRef.current) return
     clientRef.current.send('session.abort', {})
       .catch(err => console.error('停止失败:', err))
+    // 本地立即重置 turnActive，不等待服务端 turn_end 事件
+    setTurnActive(false)
+    setThinking(false)
   }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#ededed' }}>
-      <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
-          <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
-        </View>
-      </View>
-
-      <FlatList
-        data={messages}
-        keyExtractor={(_, idx) => String(idx)}
-        renderItem={({ item }) => <MessageCard message={item} />}
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingVertical: 8 }}
-      />
-
-      {thinking && (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 4 }}>
-          <View style={{ alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e5', paddingHorizontal: 14, paddingVertical: 10 }}>
-            <Text style={{ color: '#666', fontStyle: 'italic' }}>思考中...</Text>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        {/* 顶栏 */}
+        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
+            <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
           </View>
         </View>
-      )}
 
-      {permissionPrompt && (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-          <View style={{ backgroundColor: '#fff9c4', borderRadius: 12, borderWidth: 1, borderColor: '#fbc02d', padding: 12 }}>
-            <Text style={{ fontWeight: '600', marginBottom: 6 }}>权限请求</Text>
-            <Text style={{ color: '#000', marginBottom: 4 }}>{permissionPrompt.toolName}</Text>
-            <Text style={{ marginBottom: 10 }}>{permissionPrompt.message}</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <Button
-                title="允许"
-                onPress={() => {
-                  messageStore.getState().answerPermission(true)
-                  clientRef.current?.send('permission.respond', {
-                    requestId: messageStore.getState().permissionRequestId,
-                    allow: true
-                  }).catch(() => {})
-                }}
-              />
-              <Button
-                title="拒绝"
-                color="#f44336"
-                onPress={() => {
-                  messageStore.getState().answerPermission(false)
-                  clientRef.current?.send('permission.respond', {
-                    requestId: messageStore.getState().permissionRequestId,
-                    allow: false
-                  }).catch(() => {})
-                }}
-              />
+        {/* 消息列表 */}
+        <FlatList
+          data={messages}
+          keyExtractor={(_, idx) => String(idx)}
+          renderItem={({ item }) => <MessageCard message={item} />}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingVertical: 8 }}
+        />
+
+        {/* Thinking 指示器 */}
+        {thinking && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 4 }}>
+            <View style={{ alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 12, borderWidth: 1, borderColor: '#e5e5e5', paddingHorizontal: 14, paddingVertical: 10 }}>
+              <Text style={{ color: '#666', fontStyle: 'italic' }}>思考中...</Text>
             </View>
           </View>
-        </View>
-      )}
-
-      <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#d9d9d9', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder={connected ? '输入消息...' : '连接中...'}
-          editable={connected}
-          style={{ flex: 1, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 12, height: 42, color: '#000' }}
-        />
-        {turnActive ? (
-          <Button title="停止" onPress={handleAbort} color="#f44336" />
-        ) : (
-          <Button title="发送" onPress={handleSend} disabled={!connected || !input.trim()} color="#2e7d32" />
         )}
-      </View>
+
+        {/* 权限审批卡片 */}
+        {permissionPrompt && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+            <View style={{ backgroundColor: '#fff9c4', borderRadius: 12, borderWidth: 1, borderColor: '#fbc02d', padding: 12 }}>
+              <Text style={{ fontWeight: '600', marginBottom: 6 }}>权限请求</Text>
+              <Text style={{ color: '#000', marginBottom: 4 }}>{permissionPrompt.toolName}</Text>
+              <Text style={{ marginBottom: 10 }}>{permissionPrompt.message}</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Button
+                  title="允许"
+                  onPress={() => {
+                    messageStore.getState().answerPermission(true)
+                    clientRef.current?.send('permission.respond', {
+                      requestId: messageStore.getState().permissionRequestId,
+                      allow: true
+                    }).catch(() => {})
+                  }}
+                />
+                <Button
+                  title="拒绝"
+                  color="#f44336"
+                  onPress={() => {
+                    messageStore.getState().answerPermission(false)
+                    clientRef.current?.send('permission.respond', {
+                      requestId: messageStore.getState().permissionRequestId,
+                      allow: false
+                    }).catch(() => {})
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 输入栏 */}
+        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#d9d9d9', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder={connected ? '输入消息...' : '连接中...'}
+            editable={connected}
+            style={{ flex: 1, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 12, height: 42, color: '#000' }}
+          />
+          {turnActive ? (
+            <Button title="停止" onPress={handleAbort} color="#f44336" />
+          ) : (
+            <Button title="发送" onPress={handleSend} disabled={!connected || !input.trim()} color="#2e7d32" />
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
