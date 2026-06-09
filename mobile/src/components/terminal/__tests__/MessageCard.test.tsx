@@ -1,5 +1,5 @@
 import React from 'react'
-import { render } from '@testing-library/react-native'
+import { render, fireEvent } from '@testing-library/react-native'
 import { MessageCard } from '../MessageCard'
 
 describe('MessageCard', () => {
@@ -11,7 +11,7 @@ describe('MessageCard', () => {
     expect(screen.getByText('Hello')).toBeTruthy()
   })
 
-  test('渲染助手文本与思考提示', () => {
+  test('渲染助手文本，思考默认折叠', () => {
     const screen = render(
       <MessageCard
         message={{
@@ -25,10 +25,30 @@ describe('MessageCard', () => {
     )
 
     expect(screen.getByText('Response')).toBeTruthy()
+    // 思考内容默认折叠，显示"思考过程"
+    expect(screen.getByText('思考过程')).toBeTruthy()
+    // 原始思考文本默认不显示
+    expect(screen.queryByText('正在思考...')).toBeNull()
+  })
+
+  test('点击思考可展开', () => {
+    const screen = render(
+      <MessageCard
+        message={{
+          type: 'text',
+          text: 'Response',
+          thinking: '正在思考...',
+          sessionId: 's1',
+          time: '2026-06-08T00:00:00Z'
+        } as any}
+      />
+    )
+
+    fireEvent.press(screen.getByText('思考过程'))
     expect(screen.getByText('正在思考...')).toBeTruthy()
   })
 
-  test('渲染工具调用卡片', () => {
+  test('渲染工具调用卡片（折叠状态）', () => {
     const screen = render(
       <MessageCard
         message={{
@@ -41,7 +61,7 @@ describe('MessageCard', () => {
       />
     )
 
-    expect(screen.getByText('工具调用')).toBeTruthy()
+    // 折叠状态显示工具名
     expect(screen.getByText('Bash')).toBeTruthy()
   })
 
