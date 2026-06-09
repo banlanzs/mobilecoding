@@ -205,11 +205,15 @@ export function TerminalScreen(props?: any) {
       props.navigation.setOptions({ gestureEnabled: false, headerBackVisible: false })
     }
 
-    // 拦截 Android 返回键，弹窗确认退出
+    // 拦截 Android 返回键，弹窗确认退出（会同步停止桌面会话）
     const onBackPress = () => {
-      Alert.alert('退出会话', '确定要退出当前会话吗？', [
+      Alert.alert('退出会话', '确定要退出当前会话吗？退出后桌面端会话也会停止。', [
         { text: '取消', style: 'cancel' },
-        { text: '退出', style: 'destructive', onPress: () => {
+        { text: '退出', style: 'destructive', onPress: async () => {
+          try {
+            // 先通知服务端停止会话，再断开 WebSocket
+            await clientRef.current?.send('session.abort', {})
+          } catch {}
           clientRef.current?.disconnect()
           messageStore.getState().resetMessages()
           props?.navigation?.goBack()
@@ -219,11 +223,12 @@ export function TerminalScreen(props?: any) {
     }
     const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress)
 
-    if (routeParams.host && routeParams.token) {
+    // 只在首次进入时连接，后续 navigate 回来不重连
+    if (routeParams.host && routeParams.token && !clientRef.current) {
       setTimeout(() => handleConnect(), 100)
     }
 
-    return () => { backSub.remove(); unsubStore(); clientRef.current?.disconnect(); clientRef.current = null }
+    return () => { backSub.remove(); unsubStore() }
   }, [])
 
   const handleConnect = () => {
