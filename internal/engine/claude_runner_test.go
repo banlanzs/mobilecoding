@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -55,5 +56,52 @@ func TestFormatClaudeInputPreservesNewlines(t *testing.T) {
 	msg := got["message"].(map[string]any)
 	if msg["content"] != multi {
 		t.Fatalf("content = %q, want %q", msg["content"], multi)
+	}
+}
+
+func TestClaudeProcessArgsPreservesSettingsFlag(t *testing.T) {
+	got := claudeProcessArgs([]string{"--settings", `C:\Users\banlan\.claude\settings.ccload.json`, "--model", "claude-opus-4-8"}, "session-123")
+	want := []string{
+		"--print",
+		"--verbose",
+		"--output-format", "stream-json",
+		"--input-format", "stream-json",
+		"--permission-prompt-tool", "stdio",
+		"--resume", "session-123",
+		"--settings", `C:\Users\banlan\.claude\settings.ccload.json`,
+		"--model", "claude-opus-4-8",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("claudeProcessArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestClaudeProcessEnvClearsInheritedProviderEnvWhenSettingsProvided(t *testing.T) {
+	base := []string{
+		"PATH=/bin",
+		"ANTHROPIC_BASE_URL=https://current-provider.example",
+		"ANTHROPIC_AUTH_TOKEN=current-token",
+		"ANTHROPIC_MODEL=current-model",
+		"CLAUDE_CODE_USE_VERTEX=1",
+		"CLAUDE_CODE_OAUTH_TOKEN=current-oauth",
+		"MOBILECODING_TOKEN=keep",
+	}
+	got := claudeProcessEnv(base, []string{"ANTHROPIC_BASE_URL=https://explicit.example", "CUSTOM=1"}, true)
+	want := []string{
+		"PATH=/bin",
+		"MOBILECODING_TOKEN=keep",
+		"ANTHROPIC_BASE_URL=https://explicit.example",
+		"CUSTOM=1",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("claudeProcessEnv(settings) = %#v, want %#v", got, want)
+	}
+}
+
+func TestClaudeProcessEnvPreservesInheritedProviderEnvWithoutSettings(t *testing.T) {
+	base := []string{"PATH=/bin", "ANTHROPIC_BASE_URL=https://current-provider.example"}
+	got := claudeProcessEnv(base, nil, false)
+	if !reflect.DeepEqual(got, base) {
+		t.Fatalf("claudeProcessEnv(no settings) = %#v, want %#v", got, base)
 	}
 }

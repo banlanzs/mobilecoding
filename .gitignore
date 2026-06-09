@@ -12,8 +12,18 @@ cmd/server/web/
 mobilecoding-*
 *.exe
 
-# 文档（本地规划文档，不入库）
+# 文档（默认本地规划文档不入库；正式 spec 与实施计划允许提交）
 docs/
+!docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/*.md
 Reference-Projects/
 debug/
 
@@ -35,6 +45,8 @@ coverage.out
 .claude/
 .gemini/
 .workflow/
+.ccg/
+.worktrees/
 
 #resources
 ui-template/
@@ -42,3 +54,12 @@ hello.md
 
 # 测试文件
 test.txt
+error.txt
+
+# mobile (React Native 构建产物)
+mobile/node_modules/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/.bundle/

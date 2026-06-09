@@ -6,12 +6,28 @@ import type {
   SessionStartParams,
   SessionStartResult,
 } from './types';
+import {
+  METHOD_SESSION_START,
+  METHOD_SESSION_INPUT,
+  METHOD_SESSION_ABORT,
+  METHOD_SESSION_STOP,
+  METHOD_SESSION_PERMISSION_ANSWER,
+  METHOD_PERMISSION_RESPOND,
+} from './protocol';
 
 type EventCallback = (event: AppEvent, sessionId?: string) => void;
 type StatusCallback = (status: ConnectionStatus) => void;
 
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000];
 const REQUEST_TIMEOUT = 30_000;
+
+interface QueuedRequest {
+  method: string;
+  params?: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolve: (value: any) => void;
+  reject: (reason: Error) => void;
+}
 
 export class WSClient {
   private ws: WebSocket | null = null;
@@ -20,6 +36,7 @@ export class WSClient {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  private requestQueue: QueuedRequest[] = []; // 断连时入队，重连后重发
 
   private pendingRequests = new Map<
     string,
@@ -57,56 +74,59 @@ export class WSClient {
   async send<T = unknown>(method: string, params?: unknown): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        reject(new Error('not connected'));
+        // 断连时入队，等重连后自动重发
+        this.requestQueue.push({ method, params, resolve, reject });
         return;
       }
-
-      const id = crypto.randomUUID();
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`request ${method} timed out after ${REQUEST_TIMEOUT}ms`));
-      }, REQUEST_TIMEOUT);
-
-      this.pendingRequests.set(id, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
-        timer,
-      });
-
-      const envelope: Envelope = {
-        type: 'req',
-        id,
-        method,
-        params,
-      };
-      this.ws.send(JSON.stringify(envelope));
+      this.doSend(method, params, resolve as (v: unknown) => void, reject);
     });
   }
 
+  private doSend(method: string, params: unknown, resolve: (v: unknown) => void, reject: (e: Error) => void): void {
+    const id = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      this.pendingRequests.delete(id);
+      reject(new Error(`request ${method} timed out after ${REQUEST_TIMEOUT}ms`));
+    }, REQUEST_TIMEOUT);
+
+    this.pendingRequests.set(id, {
+      resolve,
+      reject,
+      timer,
+    });
+
+    const envelope: Envelope = {
+      type: 'req',
+      id,
+      method,
+      params,
+    };
+    this.ws!.send(JSON.stringify(envelope));
+  }
+
   async startSession(params: SessionStartParams): Promise<SessionStartResult> {
-    return this.send<SessionStartResult>('session.start', params);
+    return this.send<SessionStartResult>(METHOD_SESSION_START, params);
   }
 
   async sendInput(text: string): Promise<void> {
-    await this.send('session.input', { text });
+    await this.send(METHOD_SESSION_INPUT, { text });
   }
 
   async answerPermission(allow: boolean, toolName: string, requestId?: string): Promise<void> {
-    await this.send('session.permission.answer', { allow, toolName, requestId });
+    await this.send(METHOD_SESSION_PERMISSION_ANSWER, { allow, toolName, requestId });
   }
 
   // respondPermission 走新协议（HTTP hook），与 answerPermission（旧 stdio 协议）并存。
-  // 优先调用：permission.respond（Claude Code v2.1+ HTTP hook 流程）
   async respondPermission(requestId: string, allow: boolean, reason?: string): Promise<void> {
-    await this.send('permission.respond', { requestId, allow, reason });
+    await this.send(METHOD_PERMISSION_RESPOND, { requestId, allow, reason });
   }
 
   async abortTurn(): Promise<void> {
-    await this.send('session.abort');
+    await this.send(METHOD_SESSION_ABORT);
   }
 
   async stopSession(): Promise<void> {
-    await this.send('session.stop');
+    await this.send(METHOD_SESSION_STOP);
   }
 
   onEvent(cb: EventCallback): () => void {
@@ -142,6 +162,7 @@ export class WSClient {
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
       this.setStatus('connected');
+      this.flushQueue();
     };
 
     this.ws.onmessage = (event: MessageEvent) => {
@@ -198,6 +219,19 @@ export class WSClient {
     this.reconnectAttempt++;
     this.setStatus('reconnecting');
     this.reconnectTimer = setTimeout(() => this.doConnect(), delay);
+  }
+
+  // 重连后重发排队的请求
+  private flushQueue(): void {
+    const queue = this.requestQueue;
+    this.requestQueue = [];
+    for (const req of queue) {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.doSend(req.method, req.params, req.resolve, req.reject);
+      } else {
+        req.reject(new Error('not connected'));
+      }
+    }
   }
 
   private setStatus(status: ConnectionStatus): void {

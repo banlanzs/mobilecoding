@@ -25,11 +25,11 @@ export function PermissionCard({ event }: { event: PermissionEvent }) {
     <article className="card card-permission">
       <header className="card-header">
         <span className="card-badge">⚠ 权限请求</span>
-        <span className="tool-name" style={{ color: '#f7768e' }}>
+        <span className="tool-name" style={{ color: 'var(--mc-danger)' }}>
           {event.toolName}
         </span>
         {answered && (
-          <span style={{ color: '#565f89', fontSize: 11, marginLeft: 'auto' }}>已应答</span>
+          <span style={{ color: 'var(--mc-meta)', fontSize: 11, marginLeft: 'auto' }}>已应答</span>
         )}
       </header>
       <div className="permission-msg">{event.message || '请求执行工具操作'}</div>

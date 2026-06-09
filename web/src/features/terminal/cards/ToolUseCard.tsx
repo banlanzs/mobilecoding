@@ -32,7 +32,7 @@ export function ToolUseCard({ event }: { event: ToolUseEvent }) {
         <span className="card-badge">{icon} tool</span>
         <span className="tool-name">{event.toolName}</span>
         {summary && <span className="tool-summary">{summary}</span>}
-        <span style={{ marginLeft: 'auto', color: '#565f89', fontSize: 11 }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--mc-meta)', fontSize: 11 }}>
           {expanded ? '▼' : '▶'}
         </span>
       </header>

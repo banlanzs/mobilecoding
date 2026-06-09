@@ -61,9 +61,14 @@ func Project(in []engine.Event, sid string, pt ...*PhaseTracker) []Event {
 	for _, ev := range in {
 		switch ev.Kind {
 		case engine.EventRaw:
+			// 尝试 Claude stream-json 解析
 			events, err := parseClaudeEventWithTracker(ev.Data, sid, tracker)
 			if err == nil {
 				out = tracker.emitLifecycleBatch(out, events, sid)
+			} else if isCodexEvent(ev.Data) {
+				// Codex JSON-RPC 事件
+				events := parseCodexEvent(ev.Data, sid)
+				out = append(out, events...)
 			} else if !isJSON(ev.Data) {
 				out = append(out, TextEvent(sid, strings.TrimRight(string(ev.Data), "\r\n")))
 			}
@@ -660,4 +665,68 @@ func stripThinkTags(text string) (string, string) {
 	}
 
 	return strings.TrimSpace(strings.Join(thinkingParts, "\n\n")), strings.TrimSpace(result)
+}
+
+// isCodexEvent 检测是否为 Codex JSON-RPC 事件。
+func isCodexEvent(data []byte) bool {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return false
+	}
+	// Codex 事件有 "method" 字段（通知/事件帧）或 "id" 字段（响应帧）
+	_, hasMethod := m["method"]
+	_, hasID := m["id"]
+	return hasMethod || hasID
+}
+
+// parseCodexEvent 解析 Codex JSON-RPC 事件为投影事件。
+// 参考 easycodex session-orchestrator.ts 的消息规范化逻辑。
+func parseCodexEvent(data []byte, sid string) []Event {
+	method, content, err := engine.NormalizeCodexEvent(data)
+	if err != nil {
+		return nil
+	}
+
+	switch method {
+	case "initialized":
+		return []Event{LifecycleEvent(sid, "codex: initialized")}
+	case "thread_created":
+		return []Event{LifecycleEvent(sid, "codex: thread created")}
+	case "turn_started":
+		return []Event{LifecycleEvent(sid, "codex: turn started")}
+	case "turn_completed":
+		return []Event{TurnEndEvent(sid, "codex: turn completed", false)}
+	case "turn_failed":
+		msg, _ := content["message"].(string)
+		return []Event{LifecycleEvent(sid, "codex: turn failed - "+msg)}
+	case "agent_message":
+		text, _ := content["text"].(string)
+		if text != "" {
+			return []Event{TextEvent(sid, text)}
+		}
+	case "reasoning":
+		text, _ := content["text"].(string)
+		if text != "" {
+			ev := TextDeltaEvent(sid, "", 0)
+			ev.Thinking = text
+			return []Event{ev}
+		}
+	case "command_call":
+		name, _ := content["name"].(string)
+		input := content["input"]
+		return []Event{ToolUseEvent(sid, name, input)}
+	case "command_output":
+		name, _ := content["name"].(string)
+		output := content["output"]
+		return []Event{ToolResultEvent(sid, name, output)}
+	case "file_change":
+		return []Event{ToolUseEvent(sid, "file_change", content)}
+	case "question":
+		prompt, _ := content["prompt"].(string)
+		return []Event{PermissionAskEvent(sid, newMessageID(), "question", prompt)}
+	case "rpc_response":
+		// 响应帧：忽略（由 runner 内部处理）
+		return nil
+	}
+	return nil
 }

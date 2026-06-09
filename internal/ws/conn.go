@@ -2,6 +2,7 @@ package ws
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -12,9 +13,10 @@ const writeTimeout = 10 * time.Second
 const pingInterval = 15 * time.Second
 
 type Conn struct {
-	ws     *websocket.Conn
-	send   chan Envelope
-	closed chan struct{}
+	ws      *websocket.Conn
+	send    chan Envelope
+	closed  chan struct{}
+	writeMu sync.Mutex // 保护 WebSocket 写操作（writeLoop + pingLoop 共享）
 }
 
 func NewConn(w http.ResponseWriter, r *http.Request) (*Conn, error) {
@@ -76,21 +78,17 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) writeLoop() {
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
 	for {
 		select {
 		case env, ok := <-c.send:
 			if !ok {
 				return
 			}
+			c.writeMu.Lock()
 			c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
-			if err := c.ws.WriteJSON(env); err != nil {
-				return
-			}
-		case <-ticker.C:
-			c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
-			if err := c.ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+			err := c.ws.WriteJSON(env)
+			c.writeMu.Unlock()
+			if err != nil {
 				return
 			}
 		case <-c.closed:
@@ -99,7 +97,26 @@ func (c *Conn) writeLoop() {
 	}
 }
 
-func (c *Conn) pingLoop() {}
+// pingLoop 独立 goroutine，定期发送 ping 保持连接活跃。
+// 使用 writeMu 与 writeLoop 序列化写操作。
+func (c *Conn) pingLoop() {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			c.writeMu.Lock()
+			c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
+			err := c.ws.WriteMessage(websocket.PingMessage, nil)
+			c.writeMu.Unlock()
+			if err != nil {
+				return
+			}
+		case <-c.closed:
+			return
+		}
+	}
+}
 
 func originMatchesHost(origin, host string) bool {
 	if len(origin) < 8 {

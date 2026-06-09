@@ -47,11 +47,21 @@ if (process.env.MOBILECODING_SKIP_BINARY_DOWNLOAD) {
 // --- 目标路径 ---
 
 const distDir = path.join(__dirname, '..', 'dist');
-const binaryName = `mobilecoding${ext}`;
-const binaryPath = path.join(distDir, binaryName);
 
-if (fs.existsSync(binaryPath)) {
-  console.log(`[mobilecoding] Binary already exists: ${binaryPath}`);
+// 需要下载的二进制列表
+const BINARIES = [
+  { name: 'mobilecoding', assetPrefix: 'mobilecoding' },
+  { name: 'relay', assetPrefix: 'mobilecoding-relay' },
+  { name: 'mc', assetPrefix: 'mobilecoding-mc' },
+];
+
+// 检查是否所有二进制都已存在
+const allExist = BINARIES.every(({ name }) =>
+  fs.existsSync(path.join(distDir, `${name}${ext}`))
+);
+
+if (allExist) {
+  console.log('[mobilecoding] All binaries already exist');
   process.exit(0);
 }
 
@@ -150,22 +160,41 @@ function normalizeTag(v) {
     return;
   }
 
-  const assetName = `mobilecoding-${goos}-${goarch}${ext}`;
-  const url =
-    process.env.MOBILECODING_ASSET_URL ||
-    `https://github.com/${REPO}/releases/download/${version}/${assetName}`;
+  let failed = 0;
 
-  console.log(`[mobilecoding] Downloading ${assetName} from GitHub Release ${version}...`);
+  for (const { name, assetPrefix } of BINARIES) {
+    const binaryPath = path.join(distDir, `${name}${ext}`);
 
-  try {
-    await download(url, binaryPath);
-    console.log(`[mobilecoding] Downloaded to ${binaryPath}`);
-  } catch (err) {
-    console.error(`[mobilecoding] Failed to download binary: ${err.message}`);
-    console.error(`[mobilecoding] Download URL: ${url}`);
-    console.error('[mobilecoding] You can also download from:');
+    // 跳过已存在的二进制
+    if (fs.existsSync(binaryPath)) {
+      console.log(`[mobilecoding] Binary already exists: ${name}${ext}`);
+      continue;
+    }
+
+    const assetName = `${assetPrefix}-${goos}-${goarch}${ext}`;
+    const url =
+      process.env.MOBILECODING_ASSET_URL ||
+      `https://github.com/${REPO}/releases/download/${version}/${assetName}`;
+
+    console.log(`[mobilecoding] Downloading ${assetName} from GitHub Release ${version}...`);
+
+    try {
+      await download(url, binaryPath);
+      console.log(`[mobilecoding] Downloaded to ${binaryPath}`);
+    } catch (err) {
+      console.error(`[mobilecoding] Failed to download ${name}: ${err.message}`);
+      console.error(`[mobilecoding] Download URL: ${url}`);
+      failed++;
+    }
+  }
+
+  if (failed > 0) {
+    console.error(`[mobilecoding] ${failed} binary(ies) failed to download`);
+    console.error('[mobilecoding] You can manually download from:');
     console.error(`[mobilecoding]   https://github.com/${REPO}/releases/tag/${version}`);
-    console.error(`[mobilecoding]   Place the binary at: ${binaryPath}`);
+    console.error(`[mobilecoding]   Place binaries at: ${distDir}`);
     // 不阻止安装 — 用户可以手动下载
+  } else {
+    console.log('[mobilecoding] All binaries downloaded successfully');
   }
 })();

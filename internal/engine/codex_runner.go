@@ -3,17 +3,20 @@ package engine
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 )
 
 // CodexRunner 启动 codex app-server，通过 JSON-RPC over stdin/stdout 交互。
+// 参考 easycodex 的 session-orchestrator.ts 和 codex-rpc.ts。
 type CodexRunner struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
@@ -24,11 +27,13 @@ type CodexRunner struct {
 	sessionID string
 	mu        sync.Mutex
 	closed    bool
+	nextID    atomic.Int64 // JSON-RPC 请求 ID 计数器
+	threadID  string       // 当前活跃线程 ID
 }
 
 func NewCodexRunner() *CodexRunner {
 	return &CodexRunner{
-		events:    make(chan Event, 64),
+		events:    make(chan Event, 256),
 		errors:    make(chan error, 8),
 		done:      make(chan struct{}),
 		sessionID: "codex_" + uuid.NewString(),
@@ -81,7 +86,44 @@ func (r *CodexRunner) Start(ctx context.Context, req ExecRequest) error {
 
 	go r.readLoop(stdout)
 	go r.waitLoop()
+
+	// 发送 initialize 握手（参考 easycodex codex-rpc.ts）
+	go r.initialize()
+
 	return nil
+}
+
+// initialize 发送 JSON-RPC initialize + initialized 握手。
+func (r *CodexRunner) initialize() {
+	// 1. 发送 initialize 请求
+	initReq := CodexRPCRequest{
+		ID:     int(r.nextID.Add(1)),
+		Method: CodexMethodInitialize,
+		Params: CodexInitializeParams{
+			ClientInfo:   map[string]string{"name": "mobilecoding", "version": "0.3.0"},
+			Capabilities: map[string]bool{"experimentalApi": true},
+		},
+	}
+	r.sendJSON(initReq)
+
+	// 2. 发送 initialized 通知
+	initNotif := CodexRPCNotification{Method: CodexMethodInitialized}
+	r.sendJSON(initNotif)
+}
+
+// sendJSON 发送 JSON-RPC 帧到 stdin。
+func (r *CodexRunner) sendJSON(v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		r.errors <- fmt.Errorf("marshal rpc: %w", err)
+		return
+	}
+	data = append(data, '\n')
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stdin != nil {
+		r.stdin.Write(data)
+	}
 }
 
 func (r *CodexRunner) Write(p []byte) error {
@@ -95,14 +137,25 @@ func (r *CodexRunner) Write(p []byte) error {
 }
 
 func (r *CodexRunner) SendToStdin(p []byte) error { return r.Write(p) }
-func (r *CodexRunner) Abort()                       {}
+func (r *CodexRunner) Abort() {
+	// 发送 turn/interrupt 请求
+	if r.threadID != "" {
+		r.sendJSON(CodexRPCRequest{
+			ID:     int(r.nextID.Add(1)),
+			Method: CodexMethodTurnInterrupt,
+		})
+	}
+}
 
 func (r *CodexRunner) Resize(cols, rows int) error {
 	return nil
 }
 
+// readLoop 读取 stdout JSON-RPC 帧，解析为结构化事件。
+// 参考 easycodex session-orchestrator.ts 的消息规范化逻辑。
 func (r *CodexRunner) readLoop(stdout io.ReadCloser) {
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {

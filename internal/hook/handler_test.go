@@ -126,6 +126,38 @@ func TestHandlerServeHTTPAllow(t *testing.T) {
 	}
 }
 
+func TestHandlerIgnoresPermissionRequestFromDifferentCWD(t *testing.T) {
+	reg := NewRegistry()
+	broadcasted := false
+	h := NewHandler(reg, func(Event) { broadcasted = true })
+	h.AllowedCWD = `/current/project`
+
+	body := `{
+		"session_id": "other-session",
+		"cwd": "/other/project",
+		"hook_event_name": "PermissionRequest",
+		"tool_name": "Bash",
+		"tool_input": {"command": "git status"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/hooks/permission-request", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 no-op response, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Body.Len() != 0 {
+		t.Fatalf("ignored request should not return allow/deny body, got %q", rr.Body.String())
+	}
+	if broadcasted {
+		t.Fatal("request from another cwd must not be broadcast to mobile clients")
+	}
+	if reg.Pending() != 0 {
+		t.Fatalf("request from another cwd must not be registered, pending=%d", reg.Pending())
+	}
+}
+
 func TestHandlerServeHTTPDeny(t *testing.T) {
 	reg := NewRegistry()
 	h := NewHandler(reg, nil)
