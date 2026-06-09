@@ -286,6 +286,24 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	addr := ":" + cfg.Port
 	logger.Info("startup", "listening on %s (mtls=%s), workspace=%s", addr, cfg.MTLS, cfg.Workspace)
 	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: tlsCfg}
+
+	// 开发模式：同时启动一个纯 WS 监听器（绑定 0.0.0.0），供 Android 模拟器/真机调试用
+	devPort := pickDevWSPort(cfg.Port)
+	devAddr := "0.0.0.0:" + devPort
+	devListener, err := net.Listen("tcp", devAddr)
+	if err == nil {
+		devSrv := &http.Server{Handler: r}
+		go func() {
+			logger.Info("startup", "dev ws listener (no TLS): %s", devListener.Addr().String())
+			if err := devSrv.Serve(devListener); err != nil && err != http.ErrServerClosed {
+				logger.Error("dev-ws", "serve: %v", err)
+			}
+		}()
+		defer devListener.Close()
+	} else {
+		logger.Warn("startup", "dev ws listener skipped: %v", err)
+	}
+
 	return srv.ListenAndServeTLS("", "")
 }
 
@@ -372,6 +390,18 @@ func pickHookPort(mainPort string) string {
 		return "8444"
 	}
 	return strconv.Itoa(n + 1)
+}
+
+// pickDevWSPort 决定开发 WS 监听端口：MOBILECODING_DEV_WS_PORT > 主端口+2。
+func pickDevWSPort(mainPort string) string {
+	if v := os.Getenv("MOBILECODING_DEV_WS_PORT"); v != "" {
+		return v
+	}
+	n, err := strconv.Atoi(mainPort)
+	if err != nil {
+		return "8445"
+	}
+	return strconv.Itoa(n + 2)
 }
 
 // saveRequest 异步写入请求。

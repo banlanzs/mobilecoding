@@ -41,6 +41,7 @@ func runClaude(extraArgs []string) {
 	settings := fs.String("settings", "", "Claude settings file path")
 	model := fs.String("model", "", "Model override")
 	port := fs.String("port", "8443", "Server port")
+	resume := fs.String("resume", "", "Resume session ID")
 	if err := fs.Parse(extraArgs); err != nil {
 		os.Exit(1)
 	}
@@ -52,10 +53,16 @@ func runClaude(extraArgs []string) {
 	if *model != "" {
 		args = append(args, "--model", *model)
 	}
+	if *resume != "" {
+		args = append(args, "--resume", *resume)
+	}
 	args = append(args, fs.Args()...)
 
 	fmt.Fprintf(os.Stderr, "  配置文件: %s\n", displayClaudeSettings(*settings))
 	fmt.Fprintf(os.Stderr, "  模型: %s\n", displayClaudeModel(*model))
+	if *resume != "" {
+		fmt.Fprintf(os.Stderr, "  恢复会话: %s\n", *resume)
+	}
 
 	session := &Session{
 		Command:    "claude",
