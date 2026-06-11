@@ -39,14 +39,16 @@
 | **会话搜索** | `GET /api/v1/search?q=关键词` 搜索历史消息（参考 MindFS） |
 | **二维码扫描** | 扫码自动填入 token 连接 |
 
-### mc CLI（遥控器模式）
+### 子命令模式
 
 | 功能 | 说明 |
 |---|---|
-| **mc claude** | 启动 server + Claude，手机扫码后双端共存 |
+| **mobilecoding claude** | 启动 server + Claude，手机扫码后双端共存 |
+| **mobilecoding codex** | 启动 server + Codex，手机扫码后双端共存 |
+| **mobilecoding relay** | 连接到 relay 服务器作为 agent |
 | **遥控器模式** | 手机看到终端对话、处理权限、可中止，终端保持原生体验 |
 | **智能 IP 选择** | 优先局域网 IP（10.x > 172.16-31 > 192.168），跳过虚拟网卡 |
-| **手动指定 IP** | `mc claude -ip 192.168.1.100` 或 `MOBILECODING_IP=...` |
+| **手动指定 IP** | `mobilecoding claude -ip 192.168.1.100` 或 `MOBILECODING_IP=...` |
 
 ### 传输与安全
 
@@ -74,23 +76,29 @@ make build
 # 浏览器访问 https://127.0.0.1:8443/
 ```
 
-### mc CLI（推荐）
+### 遥控器模式（推荐）
 
 ```bash
 make build
 npm link
 
 # 启动（自动进入遥控器模式）
+mobilecoding claude
+mobilecoding claude --settings ~/.claude/settings.xxx.json
+mobilecoding claude --model claude-opus-4-8
+
+# mc 命令等价于 mobilecoding
 mc claude
-mc claude --settings ~/.claude/settings.xxx.json
-mc claude --model claude-opus-4-8
+mc codex
 ```
 
 ### npm 安装
 
 ```bash
 npm install -g @banlan/mobilecoding
-mobilecoding start
+mobilecoding                          # 启动 server（默认行为）
+mobilecoding claude                   # 遥控器模式
+mobilecoding relay -relay wss://...   # relay 模式
 ```
 
 ### 自定义 token
