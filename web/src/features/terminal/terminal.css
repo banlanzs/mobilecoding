@@ -503,12 +503,9 @@
   background: color-mix(in oklab, var(--mc-danger) 22%, transparent);
 }
 
-/* Stop 按钮隔离：左边框分隔，避免和高频按钮混排误触 */
+/* Stop 按钮隔离：独立圆角 + 左侧间距分隔，避免和高频按钮混排误触 */
 .btn-stop-isolated {
-  padding-left: 10px;
-  border-left: 1px solid var(--mc-border);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+  margin-left: 4px;
 }
 
 /* 双重确认停止按钮状态 */
