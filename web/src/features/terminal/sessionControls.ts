@@ -13,6 +13,20 @@ export function modelFromArgs(args: string[]): string {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : '';
 }
 
+// settingsFromArgs 从 args 中提取 --settings 路径（支持 --settings X 和 --settings=X 两种形式）。
+export function settingsFromArgs(args: string[]): string {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--settings' && i + 1 < args.length) {
+      return args[i + 1];
+    }
+    if (a.startsWith('--settings=')) {
+      return a.slice('--settings='.length);
+    }
+  }
+  return '';
+}
+
 export function argsWithModel(args: string[], model: string): string[] {
   const next: string[] = [];
   for (let i = 0; i < args.length; i++) {

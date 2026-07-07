@@ -10,10 +10,30 @@ import {
   sessionIdForDirectSend,
   shouldRefreshRemoteControlSession,
   requireActiveSessionId,
+  settingsFromArgs,
 } from './sessionControls.ts';
 
 test('modelFromArgs reads --model value from args', () => {
   assert.equal(modelFromArgs(['--settings', 'c:/claude/settings.json', '--model', 'claude-sonnet-4-6']), 'claude-sonnet-4-6');
+});
+
+test('settingsFromArgs reads --settings value (separate arg form)', () => {
+  assert.equal(
+    settingsFromArgs(['--settings', 'c:/proj/.claude/settings.local.json', '--model', 'claude-sonnet-4-6']),
+    'c:/proj/.claude/settings.local.json',
+  );
+});
+
+test('settingsFromArgs reads --settings=value (--settings=X form)', () => {
+  assert.equal(
+    settingsFromArgs(['--settings=c:/x/settings.json']),
+    'c:/x/settings.json',
+  );
+});
+
+test('settingsFromArgs returns empty when --settings absent', () => {
+  assert.equal(settingsFromArgs(['--model', 'claude-sonnet-4-6']), '');
+  assert.equal(settingsFromArgs([]), '');
 });
 
 test('argsWithModel replaces an existing --model and keeps it after --settings', () => {
