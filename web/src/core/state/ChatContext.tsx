@@ -93,8 +93,6 @@ export interface AgentStateInfo {
 export interface ChatState {
   status: ConnectionStatus;
   sessionId: string | null; // 当前活跃 runner 的 session id
-  viewedSessionId: string | null; // 当前页面正在查看的 session id
-  readOnly: boolean; // true 表示历史会话只读，不向 active runner 发送输入
   stoppedSessionId: string | null;
   messages: DisplayMessage[];
   lastSeq: number; // 最后收到的消息 seq，用于断线重连补发
@@ -119,7 +117,6 @@ type Action =
   | { type: 'RUNTIME_LOADED'; runtime: RuntimeConfig }
   | { type: 'SESSION_STARTED'; sessionId: string }
   | { type: 'ACTIVE_SESSION_DETECTED'; sessionId: string }
-  | { type: 'VIEW_SESSION_HISTORY'; sessionId: string; messages: DisplayMessage[]; lastSeq: number; readOnly: boolean }
   | { type: 'SESSION_STOPPED' }
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
@@ -153,8 +150,6 @@ function reducer(state: ChatState, action: Action): ChatState {
       return {
         ...state,
         sessionId: action.sessionId,
-        viewedSessionId: action.sessionId,
-        readOnly: false,
         stoppedSessionId: null,
         messages: [],
         lastSeq: 0,
@@ -169,40 +164,18 @@ function reducer(state: ChatState, action: Action): ChatState {
       };
     }
     case 'ACTIVE_SESSION_DETECTED': {
-      const viewingSameSession = !state.viewedSessionId || state.viewedSessionId === action.sessionId;
       return {
         ...state,
         sessionId: action.sessionId,
-        viewedSessionId: viewingSameSession ? action.sessionId : state.viewedSessionId,
-        readOnly: viewingSameSession ? false : state.readOnly,
         stoppedSessionId: null,
         lastError: null,
       };
     }
-    case 'VIEW_SESSION_HISTORY':
-      saveLastSeq(action.lastSeq);
-      return {
-        ...state,
-        viewedSessionId: action.sessionId,
-        readOnly: action.readOnly,
-        messages: action.messages,
-        lastSeq: action.lastSeq,
-        lastError: null,
-        thinking: false,
-        turnActive: false,
-        stopping: false,
-        permissionPrompt: null,
-        permissionRequestId: null,
-        agentState: { status: 'idle', since: Date.now() },
-        contextWindow: null,
-      };
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
       return {
         ...state,
         sessionId: null,
-        viewedSessionId: null,
-        readOnly: false,
         stoppedSessionId: state.sessionId || state.stoppedSessionId,
         permissionPrompt: null,
         permissionRequestId: null,
@@ -225,10 +198,6 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'EVENT_RECEIVED': {
       const ev = action.event;
       console.log('[DEBUG] EVENT_RECEIVED:', ev.type, ev);
-
-      if (state.readOnly) {
-        return state;
-      }
 
       if (action.sessionId && action.sessionId === state.stoppedSessionId) {
         console.log('[DEBUG] Ignoring event for stopped session:', action.sessionId);
@@ -299,7 +268,6 @@ function reducer(state: ChatState, action: Action): ChatState {
         ...state,
         messages,
         sessionId: state.sessionId || (!state.stopping ? action.sessionId || null : null),
-        viewedSessionId: state.viewedSessionId || state.sessionId || (!state.stopping ? action.sessionId || null : null),
       };
 
       // 追踪最新 seq（持久化到 localStorage）
@@ -441,8 +409,6 @@ function savedSessionId(): string | null {
 const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
-  viewedSessionId: savedSessionId(),
-  readOnly: false,
   stoppedSessionId: null,
   messages: loadMessages(),
   lastSeq: loadLastSeq(),
@@ -507,7 +473,6 @@ interface ChatContextValue {
   clearPermAllowlist: () => void;
   dismissPermission: () => void;
   setSelectedCommand: (command: string) => void;
-  viewSession: (sessionId: string) => Promise<void>;
   connectRelay: (config: RelayConfig) => void;
   disconnectRelay: () => void;
 }
@@ -561,7 +526,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // 断线重连补发：连接成功后，如果有 lastSeq 且有 sessionId，通过 HTTP 补发缺失消息
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
-    if (state.readOnly || !state.sessionId || state.lastSeq <= 0) return;
+    if (!state.sessionId || state.lastSeq <= 0) return;
     const fetchMissed = async () => {
       try {
         const token = localStorage.getItem('mobilecoding.token');
@@ -587,7 +552,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
     };
     fetchMissed();
-  }, [status, state.connectionMode, state.sessionId, state.lastSeq, state.readOnly]);
+  }, [status, state.connectionMode, state.sessionId, state.lastSeq]);
 
   // 订阅 WebSocket 事件
   useEffect(() => {
@@ -699,10 +664,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const sendInput = useCallback(
     async (text: string): Promise<void> => {
-      if (state.readOnly) {
-        throw new Error('历史会话只读，不能发送消息');
-      }
-
       // 断线期间：入队等待重连，不立即发送（避免抛错丢失输入）
       if (state.connectionMode === 'direct' && state.status !== 'connected') {
         dispatch({ type: 'QUEUE_INPUT', text });
@@ -766,7 +727,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw err;
       }
     },
-    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.readOnly, state.status]
+    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.status]
   );
 
   // 重连后自动重发断线期间排队的输入。
@@ -831,43 +792,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     dispatch({ type: 'SET_SELECTED_COMMAND', command });
   }, []);
 
-  const viewSession = useCallback(async (sessionId: string): Promise<void> => {
-    if (!sessionId || sessionId === 'new') {
-      if (!state.sessionId) {
-        dispatch({ type: 'VIEW_SESSION_HISTORY', sessionId: '', messages: [], lastSeq: 0, readOnly: false });
-      }
-      return;
-    }
-    const token = localStorage.getItem('mobilecoding.token');
-    const res = await fetch(`/api/v1/messages?session_id=${encodeURIComponent(sessionId)}&after_seq=0&limit=500`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      dispatch({ type: 'ERROR', error: `加载会话历史失败: ${res.statusText}` });
-      return;
-    }
-    const data = await res.json();
-    const rows = (data.messages || []) as Array<{ seq: number; content: string }>;
-    rows.sort((a, b) => a.seq - b.seq);
-    const messages: DisplayMessage[] = [];
-    let lastSeq = 0;
-    for (const row of rows) {
-      try {
-        messages.push(JSON.parse(row.content) as DisplayMessage);
-        if (row.seq > lastSeq) lastSeq = row.seq;
-      } catch {
-        // 忽略无法解析的历史行，避免单条坏数据阻塞整个会话查看。
-      }
-    }
-    dispatch({
-      type: 'VIEW_SESSION_HISTORY',
-      sessionId,
-      messages,
-      lastSeq,
-      readOnly: sessionId !== state.sessionId,
-    });
-  }, [state.sessionId]);
-
   const abortTurn = useCallback(async (): Promise<void> => {
     dispatch({ type: 'ABORT_TURN' });
     if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -928,7 +852,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     clearPermAllowlist,
     dismissPermission,
     setSelectedCommand,
-    viewSession,
     connectRelay,
     disconnectRelay,
   };

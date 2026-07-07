@@ -1,8 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { ChatProvider } from './core/state/ChatContext'
 import { TerminalPage } from './features/terminal/TerminalPage'
-import { SessionListPage } from './features/sessions/SessionListPage'
-import { RootPage } from './features/root/RootPage'
 import { useEffect } from 'react'
 
 // Token 拦截器：全局检查并提取 URL 中的 token
@@ -23,16 +21,7 @@ function TokenInterceptor({ children }: { children: React.ReactNode }) {
       params.delete('token')
       const newSearch = params.toString()
       const newUrl = location.pathname + (newSearch ? '?' + newSearch : '')
-
-      // 如果在根路径，跳转到 /sessions
-      if (location.pathname === '/') {
-        console.log('[TokenInterceptor] redirecting to /sessions')
-        navigate('/sessions', { replace: true })
-      } else {
-        // 否则只清理 URL
-        console.log('[TokenInterceptor] cleaning URL')
-        window.history.replaceState({}, '', newUrl)
-      }
+      window.history.replaceState({}, '', newUrl)
     }
   }, [location, navigate])
 
@@ -45,9 +34,7 @@ function App() {
       <ChatProvider>
         <TokenInterceptor>
           <Routes>
-            <Route path="/" element={<RootPage />} />
-            <Route path="/sessions" element={<SessionListPage />} />
-            <Route path="/sessions/:id" element={<TerminalPage />} />
+            <Route path="/*" element={<TerminalPage />} />
           </Routes>
         </TokenInterceptor>
       </ChatProvider>

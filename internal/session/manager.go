@@ -276,64 +276,6 @@ func (m *Manager) Stop() error {
 	return run.Close()
 }
 
-// ListSessions 返回所有会话元数据。
-func (m *Manager) ListSessions() ([]*SessionMeta, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return nil, errors.New("session store not configured")
-	}
-
-	return m.store.List(), nil
-}
-
-// GetSession 获取单个会话元数据。
-func (m *Manager) GetSession(id string) (*SessionMeta, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return nil, errors.New("session store not configured")
-	}
-
-	return m.store.Get(id)
-}
-
-// DeleteSession 删除会话元数据。
-func (m *Manager) DeleteSession(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return errors.New("session store not configured")
-	}
-
-	// 不允许删除当前活跃会话
-	if id == m.sid {
-		return errors.New("cannot delete active session")
-	}
-
-	return m.store.Delete(id)
-}
-
-// RenameSession 重命名会话。
-func (m *Manager) RenameSession(id, name string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return errors.New("session store not configured")
-	}
-	if name == "" {
-		return errors.New("session name cannot be empty")
-	}
-
-	return m.store.Update(id, func(meta *SessionMeta) {
-		meta.Name = name
-	})
-}
-
 // Write 把 p 写入当前活跃 runner。
 func (m *Manager) Write(p []byte) error {
 	m.mu.Lock()

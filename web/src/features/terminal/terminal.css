@@ -408,7 +408,7 @@
 }
 
 .session-bar-active .session-actions {
-  margin-left: 0;
+  margin-left: auto;
 }
 
 .session-bar-active .btn {
@@ -503,9 +503,8 @@
   background: color-mix(in oklab, var(--mc-danger) 22%, transparent);
 }
 
-/* Stop 按钮隔离：推到右侧 + 左边框分隔，避免和高频按钮混排误触 */
+/* Stop 按钮隔离：左边框分隔，避免和高频按钮混排误触 */
 .btn-stop-isolated {
-  margin-left: auto;
   padding-left: 10px;
   border-left: 1px solid var(--mc-border);
   border-top-left-radius: 0;

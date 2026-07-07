@@ -21,13 +21,11 @@ interface ClaudeSetting {
 }
 
 interface SessionBarProps {
-  onBack?: () => void;
-  currentSessionId?: string; // 预留给未来的会话恢复功能
   onToggleFiles?: () => void;
   showFiles?: boolean;
 }
 
-export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
+export function SessionBar({ onToggleFiles, showFiles }: SessionBarProps) {
   const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
@@ -227,31 +225,10 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     </div>
   ) : null;
 
-  if (state.readOnly) {
-    return (
-      <div className="session-bar session-bar-active">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
-        {error && <div className="session-error">{error}</div>}
-        <span className="session-active" title={currentSessionId || state.viewedSessionId || ''}>
-          历史会话，只读
-        </span>
-      </div>
-    );
-  }
-
   // Relay 模式：指示 + 断开
   if (state.connectionMode === 'relay') {
     return (
       <div className="session-bar">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         {error && <div className="session-error">{error}</div>}
         <div className="relay-indicator">
           <span className="relay-dot" />
@@ -276,11 +253,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     const activeLabel = `${command}${selectedModel ? ` (${selectedModel})` : ''} — active`;
     return (
       <div className="session-bar session-bar-active">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         {error && <div className="session-error">{error}</div>}
         <span className="session-active" title={activeLabel}>
           {activeLabel}
@@ -338,11 +310,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   if (state.status === 'connected' && state.runtime.launchMode === 'remote-control') {
     return (
       <div className="session-bar">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         <span className="session-active">🔗 遥控器模式 — 终端 CLI 已连接</span>
       </div>
     );
@@ -351,11 +318,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   // mobilecoding 托管模式：连接后仍显示完整选择界面，由手机端启动 session
   return (
     <div className="session-bar session-bar-setup">
-      {onBack && (
-        <button className="btn-back" onClick={onBack} title="返回会话列表">
-          ←
-        </button>
-      )}
       {error && <div className="session-error">{error}</div>}
 
       <select

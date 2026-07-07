@@ -105,8 +105,8 @@ export function InputBar() {
   const isActive = state.turnActive || state.thinking || state.agentState.status !== 'idle';
   const isStopping = state.stopping;
   const remoteCliNotReady = isRemoteCliNotReady(state.connectionMode, state.runtime.launchMode, state.sessionId);
-  // 断线时不禁用输入（允许排队），仅 readOnly / CLI 未就绪时禁用
-  const disabled = state.readOnly || remoteCliNotReady;
+  // 断线时不禁用输入（允许排队），仅 CLI 未就绪时禁用
+  const disabled = remoteCliNotReady;
 
   // 键盘弹出适配
   useEffect(() => {
@@ -258,9 +258,7 @@ export function InputBar() {
     requestAnimationFrame(adjustHeight);
   };
 
-  const placeholder = state.readOnly
-    ? '历史会话只读'
-    : remoteCliNotReady
+  const placeholder = remoteCliNotReady
     ? (narrow ? 'CLI 未就绪' : '桌面 CLI 未就绪，请确认 mc claude 会话仍在运行')
     : isActive
     ? (narrow ? '响应中…' : 'AI 响应中… (Enter 中止)')

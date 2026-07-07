@@ -350,13 +350,13 @@ export function TerminalScreen(props?: any) {
       })
       .catch(err => console.warn('[Terminal] version fetch failed:', err?.message))
 
-    // 2. 获取历史消息
-    const sessionsUrl = `${baseUrl}/api/v1/sessions`
-    console.log('[Terminal] fetching sessions for history')
-    fetch(sessionsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error(`sessions HTTP ${res.status}`)))
-      .then((sessions: Array<{ id: string }>) => {
-        const activeSessionId = sessions?.[0]?.id
+    // 2. 获取历史消息（通过 /api/v1/session-id 取活跃会话 ID）
+    const sessionIdUrl = `${baseUrl}/api/v1/session-id`
+    console.log('[Terminal] fetching active session id')
+    fetch(sessionIdUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`session-id HTTP ${res.status}`)))
+      .then((data: { sessionId?: string }) => {
+        const activeSessionId = data?.sessionId
         if (!activeSessionId) {
           console.log('[Terminal] no active session found')
           return
