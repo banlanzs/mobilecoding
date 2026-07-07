@@ -1,4 +1,4 @@
-// 渲染 text 事件 — assistant 文本消息，支持完整 Markdown + thinking 折叠 + 打字机动画
+// 渲染 text 事件 — assistant 文本消息，支持完整 Markdown + thinking 折叠 + 代码块复制
 import type { TextEvent, TextDeltaEvent } from '../../../core/ws/types';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { marked } from 'marked';
@@ -24,66 +24,72 @@ function renderMarkdown(text: string): string {
   }
 }
 
-// 打字机动画：逐字揭示文本
-function useTypewriter(text: string, isDelta: boolean): string {
-  const safeText = text || '';
-  const [revealed, setRevealed] = useState(isDelta ? safeText : '');
-  const prevFull = useRef('');
-
-  useEffect(() => {
-    // text_delta 模式下直接全量显示（已经是增量的）
-    if (isDelta) {
-      setRevealed(safeText);
-      prevFull.current = safeText;
-      return;
-    }
-
-    // 文本未变化，跳过
-    if (safeText === prevFull.current) return;
-    prevFull.current = safeText;
-
-    // 短文本直接显示
-    if (safeText.length < 60) {
-      setRevealed(safeText);
-      return;
-    }
-
-    // 长文本：打字机动画（~80 步，约 2 秒完成）
-    setRevealed(safeText.slice(0, 3)); // 先显示前几个字，避免瞬间空白
-    let i = 1;
-    const totalSteps = 80;
-    const charsPerStep = Math.max(1, Math.ceil(safeText.length / totalSteps));
-    const timer = setInterval(() => {
-      i++;
-      const end = Math.min(i * charsPerStep, safeText.length);
-      setRevealed(safeText.slice(0, end));
-      if (end >= safeText.length) {
-        clearInterval(timer);
-      }
-    }, 25);
-    return () => clearInterval(timer);
-  }, [safeText, isDelta]);
-
-  // 确保最终显示完整文本
-  if (revealed.length < safeText.length && !isDelta && safeText.length < 80) {
-    return safeText;
-  }
-  return revealed || safeText;
-}
-
 export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
   const [copied, setCopied] = useState(false);
   const [thinkingOpen, setThinkingOpen] = useState(false);
-  const isDelta = event.type === 'text_delta';
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const text = event.text || '';
-  const displayText = useTypewriter(text, isDelta);
-  const html = useMemo(() => renderMarkdown(displayText), [displayText]);
+  const html = useMemo(() => renderMarkdown(text), [text]);
   const thinkingHtml = useMemo(
     () => (event.thinking ? renderMarkdown(event.thinking) : ''),
     [event.thinking]
   );
   const hasThinking = !!event.thinking;
+
+  // 渲染 markdown 后，给每个代码块包一层 header（语言标签 + 复制按钮）。
+  // 手动管理 innerHTML：React 不控制 bodyRef 内容，避免 dangerouslySetInnerHTML 与
+  // DOM 后处理冲突。流式 delta 时 html 随 text 增长频繁变化，每次重建后重新加 header。
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    root.innerHTML = html;
+    root.querySelectorAll<HTMLPreElement>('pre').forEach((pre) => {
+      const code = pre.querySelector('code');
+      const langMatch = code?.className.match(/language-([\w-]+)/);
+      const lang = langMatch?.[1] || '';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'code-block';
+
+      const header = document.createElement('div');
+      header.className = 'code-block-header';
+
+      const langLabel = document.createElement('span');
+      langLabel.className = 'code-lang';
+      langLabel.textContent = lang || 'text';
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'btn-copy-code';
+      copyBtn.textContent = '复制';
+
+      header.appendChild(langLabel);
+      header.appendChild(copyBtn);
+      pre.parentNode!.insertBefore(wrap, pre);
+      wrap.appendChild(header);
+      wrap.appendChild(pre);
+    });
+  }, [html]);
+
+  // 事件委托：复制按钮点击 → 读取同 code-block 下的 code 文本
+  const onBodyClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.btn-copy-code');
+    if (!btn) return;
+    const block = btn.closest('.code-block');
+    const codeText = block?.querySelector('code')?.textContent || '';
+    navigator.clipboard
+      .writeText(codeText)
+      .then(() => {
+        btn.textContent = '已复制';
+        setTimeout(() => {
+          btn.textContent = '复制';
+        }, 1200);
+      })
+      .catch(() => {
+        // ignore
+      });
+  };
 
   const copy = async () => {
     try {
@@ -132,8 +138,11 @@ export function TextCard({ event }: { event: TextEvent | TextDeltaEvent }) {
         </div>
       )}
 
-      <div className="markdown-body"
-           dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        className="markdown-body"
+        ref={bodyRef}
+        onClick={onBodyClick}
+      />
     </article>
   );
 }

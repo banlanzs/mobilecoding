@@ -1,4 +1,4 @@
-// 连接状态栏 — 状态(中文标签 + 脉冲点) + 工作目录 + 主题切换
+// 连接状态栏 — 状态(中文标签 + 脉冲点) + 工作目录 + 主题切换 + 断线横幅
 import { useState } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
@@ -36,11 +36,17 @@ export function ConnectionBar() {
   const themeIcon = theme === 'dark' ? '☀️' : theme === 'light' ? '💻' : '🌙';
   const themeLabel = theme === 'dark' ? '亮色' : theme === 'light' ? '终端' : '暗色';
 
+  const isOffline = state.status === 'reconnecting' || state.status === 'closed';
+  const pendingCount = state.pendingQueue.length;
+
   return (
     <div className="connection-bar">
       <div className="connection-status">
         <span className={dotClass} />
         <span className="conn-state">{STATUS_LABELS[state.status] || state.status}</span>
+        {isOffline && pendingCount > 0 && (
+          <span className="pending-badge">{pendingCount} 条待发送</span>
+        )}
       </div>
       <div className="connection-info">
         {shortCwd && <span className="cwd">{shortCwd}</span>}
@@ -53,6 +59,12 @@ export function ConnectionBar() {
           {themeIcon}
         </button>
       </div>
+      {isOffline && (
+        <div className="offline-banner" role="status">
+          {state.status === 'reconnecting' ? '正在重连…' : '连接已断开'}
+          {pendingCount > 0 && `，输入将在重连后自动发送`}
+        </div>
+      )}
     </div>
   );
 }

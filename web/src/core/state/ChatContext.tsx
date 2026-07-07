@@ -89,6 +89,7 @@ export interface ChatState {
   stopping: boolean; // 正在停止会话，阻止事件重新激活 turn
   agentState: AgentStateInfo;
   contextWindow: { used: number; max: number } | null; // 最近 context_window 事件的用量，供 SessionBar 进度条
+  pendingQueue: string[]; // 断线期间排队的输入，重连后自动重发
 }
 
 type Action =
@@ -105,7 +106,9 @@ type Action =
   | { type: 'STOPPING' }
   | { type: 'ERROR'; error: string }
   | { type: 'SET_SELECTED_COMMAND'; command: string }
-  | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
+  | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' }
+  | { type: 'QUEUE_INPUT'; text: string }
+  | { type: 'CLEAR_PENDING' };
 
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
@@ -377,6 +380,15 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, thinking: false, turnActive: false };
     case 'STOPPING':
       return { ...state, stopping: true, thinking: false, turnActive: false };
+    case 'QUEUE_INPUT':
+      // 断线期间入队：保留顺序，去重连续相同项
+      if (state.pendingQueue.length > 0 && state.pendingQueue[state.pendingQueue.length - 1] === action.text) {
+        return state;
+      }
+      return { ...state, pendingQueue: [...state.pendingQueue, action.text] };
+    case 'CLEAR_PENDING':
+      if (state.pendingQueue.length === 0) return state;
+      return { ...state, pendingQueue: [] };
     case 'ERROR':
       // 错误时不重置 turnActive（可能只是网络抖动，会话还在）
       return { ...state, lastError: action.error };
@@ -409,6 +421,7 @@ const initialState: ChatState = {
   stopping: false,
   agentState: { status: 'idle', since: Date.now() },
   contextWindow: null,
+  pendingQueue: [],
 };
 
 // 从 context_window 事件的 toolInput 提取 token 用量
@@ -649,6 +662,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw new Error('历史会话只读，不能发送消息');
       }
 
+      // 断线期间：入队等待重连，不立即发送（避免抛错丢失输入）
+      if (state.connectionMode === 'direct' && state.status !== 'connected') {
+        dispatch({ type: 'QUEUE_INPUT', text });
+        return;
+      }
+
       if (state.connectionMode === 'relay' && relayClientRef.current) {
         dispatch({ type: 'USER_MESSAGE_SENT', text, sessionId: state.sessionId || 'relay_session' });
         relayClientRef.current.sendText(text);
@@ -706,8 +725,44 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw err;
       }
     },
-    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.readOnly]
+    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.readOnly, state.status]
   );
+
+  // 重连后自动重发断线期间排队的输入。
+  // 用 ref 持有最新 sendInput，effect 仅由 status 触发，
+  // 避免 sendInput 闭包重建导致 effect 抖动；flushingRef 防止并发重入。
+  const sendInputRef = useRef(sendInput);
+  useEffect(() => {
+    sendInputRef.current = sendInput;
+  }, [sendInput]);
+  const flushingRef = useRef(false);
+  useEffect(() => {
+    if (status !== 'connected') {
+      flushingRef.current = false;
+      return;
+    }
+    if (state.pendingQueue.length === 0 || flushingRef.current) return;
+    // remote-control 模式下 sessionId 可能尚未刷新，交给 sendInput 内部守卫
+    flushingRef.current = true;
+    const queue = [...state.pendingQueue];
+    dispatch({ type: 'CLEAR_PENDING' });
+    (async () => {
+      for (const text of queue) {
+        try {
+          await sendInputRef.current(text);
+        } catch (err) {
+          // 单条失败：把剩余消息放回队列，显示错误，停止 flush
+          console.error('[QUEUE] flush failed, requeuing remaining:', err);
+          for (const remaining of queue.slice(queue.indexOf(text) + 1)) {
+            dispatch({ type: 'QUEUE_INPUT', text: remaining });
+          }
+          dispatch({ type: 'ERROR', error: '重连后发送失败，部分消息已保留' });
+          break;
+        }
+      }
+      flushingRef.current = false;
+    })();
+  }, [status, state.pendingQueue]);
 
   const sendStop = useCallback(async (): Promise<void> => {
     if (state.stopping) return;
