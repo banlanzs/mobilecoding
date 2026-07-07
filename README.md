@@ -2,7 +2,10 @@
 
 **个人 AI CLI 远程控制台** — 把本机 Claude Code / Codex / 任意 LLM CLI 变成手机可操作的结构化聊天界面。
 
-手机浏览器打开 `https://你的电脑IP:8443`，扫码或输入 token 即可连接。无需安装 App。
+提供两种手机客户端，共用同一个 Go 后端：
+
+- **PWA（浏览器，`web/`）**：手机浏览器打开 `https://你的电脑IP:8443`，扫码或输入 token 即可连接，无需安装 App。
+- **原生 App（React Native，`mobile/`）**：Android/iOS 原生客户端，扫码连接，使用本地 SQLite 持久化会话与消息。
 
 ---
 
@@ -101,6 +104,24 @@ mobilecoding claude                   # 遥控器模式
 mobilecoding relay -relay wss://...   # relay 模式
 ```
 
+### 原生客户端（React Native）
+
+`mobile/` 目录是 Android/iOS 原生客户端，与 PWA 平行，连接同一个 Go 后端。
+
+```bash
+cd mobile
+npm install
+
+# Android
+npm run android
+
+# iOS（首次需安装 Pods）
+bundle exec pod install --project-directory=ios
+npm run ios
+```
+
+启动后 App 内扫码或手动输入后端地址（`https://电脑IP:8443`）与 token 连接。会话与消息通过本地 SQLite 持久化，断线自动重连补发。
+
 ### 自定义 token
 
 ```bash
@@ -176,6 +197,7 @@ mobilecoding Go 后端
 | 前端 | React 18 + TypeScript + Vite |
 | Markdown | marked (GFM) |
 | PWA | Workbox (Service Worker + IndexedDB) |
+| 移动端 | React Native 0.81（`mobile/`，Android/iOS，op-sqlite + Zustand） |
 | 发布 | npm + GitHub Actions |
 
 ---
