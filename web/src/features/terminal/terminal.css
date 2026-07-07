@@ -951,9 +951,36 @@
 .diff-add .diff-prefix { color: var(--mc-success); }
 .diff-del { background: color-mix(in oklab, var(--mc-danger) 12%, transparent); }
 .diff-del .diff-prefix { color: var(--mc-danger); }
-.diff-same { background: transparent; }
-.diff-same .diff-prefix { color: var(--mc-meta); }
+.diff-context, .diff-same { background: transparent; }
+.diff-context .diff-prefix, .diff-same .diff-prefix { color: var(--mc-meta); }
+.diff-hunk {
+  background: color-mix(in oklab, var(--mc-accent) 10%, transparent);
+  color: var(--mc-accent);
+  border-top: 1px solid var(--mc-border);
+  border-bottom: 1px solid var(--mc-border);
+  margin: 4px 0;
+  font-weight: 600;
+}
+.diff-hunk .diff-prefix { color: var(--mc-accent); }
+.diff-meta {
+  color: var(--mc-meta);
+  font-size: 10px;
+  padding: 2px 8px;
+}
 .diff-prefix { display: inline-block; width: 16px; user-select: none; }
+.diff-truncated {
+  padding: 6px 8px;
+  color: var(--mc-meta);
+  font-size: 11px;
+  text-align: center;
+  border-top: 1px solid var(--mc-border);
+}
+.diff-empty {
+  padding: 12px 8px;
+  color: var(--mc-meta);
+  text-align: center;
+  font-size: 12px;
+}
 
 /* ─── 权限状态行（内联，无交互按钮）───────────────────────────────────── */
 .card-permission-status {

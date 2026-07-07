@@ -115,6 +115,10 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/git/status", gitStatusHandler())
 		r.Get("/git/diff", gitDiffHandler())
 		r.Get("/git/diff-summary", gitDiffSummaryHandler())
+
+		// 文件浏览 API
+		r.Get("/files/tree", filesTreeHandler())
+		r.Get("/files/read", filesReadHandler())
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
