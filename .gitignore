@@ -15,6 +15,7 @@ mobilecoding-*
 # 文档
 docs/
 superpowers/
+.superpowers/
 dev-docs/
 Reference-Projects/
 debug/
