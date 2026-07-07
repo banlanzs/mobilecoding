@@ -147,6 +147,6 @@ func PermissionAskEvent(sid, requestID, toolName, prompt string) Event {
 
 // PermissionAskEventWithID 是 PermissionAskEvent 的兼容版本，允许 ToolInput 作为 JSON 透传给前端。
 // 用于 Claude HTTP hook 场景：toolInput 已经是 json.RawMessage。
-func PermissionAskEventWithID(sid, requestID, toolName, prompt string) Event {
-	return Event{Type: EventPermissionAsk, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, Message: prompt, MessageID: requestID}
+func PermissionAskEventWithID(sid, requestID, toolName, prompt string, toolInput any) Event {
+	return Event{Type: EventPermissionAsk, SessionID: sid, Time: time.Now().UTC(), ToolName: toolName, Message: prompt, MessageID: requestID, ToolInput: toolInput}
 }

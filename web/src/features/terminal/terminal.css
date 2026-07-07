@@ -1457,6 +1457,71 @@
   box-shadow: 0 4px 12px color-mix(in oklab, var(--mc-success) 30%, transparent);
 }
 
+/* 详情展开 */
+.permission-banner-detail-toggle {
+  background: none;
+  border: none;
+  color: var(--mc-accent);
+  font-size: 12px;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.permission-banner-detail-toggle:hover {
+  text-decoration: underline;
+}
+.permission-banner-detail {
+  margin: 4px 0;
+  padding: 8px 10px;
+  background: var(--mc-surface-2);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  font-family: var(--mc-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--mc-fg-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* 次级操作：会话级允许 / 本轮全部允许 */
+.permission-banner-secondary {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.permission-banner-secondary .btn-secondary {
+  flex: 1;
+  height: 36px;
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  background: var(--mc-surface-2);
+  color: var(--mc-fg-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--mc-motion), color var(--mc-motion);
+}
+.permission-banner-secondary .btn-secondary:hover {
+  background: var(--mc-surface);
+  color: var(--mc-fg);
+}
+.permission-banner-secondary .btn-secondary:active {
+  transform: scale(0.98);
+}
+
+/* 自动允许提示 */
+.permission-banner-auto {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--mc-radius-sm);
+  background: color-mix(in oklab, var(--mc-success) 14%, transparent);
+  color: var(--mc-success);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* 权限卡片内的 allow/deny（备用，card-permission 用）*/
 .btn-allow {
   background: color-mix(in oklab, var(--mc-success) 18%, transparent);

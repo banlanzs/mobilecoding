@@ -119,12 +119,16 @@ export interface PermissionRequestEvent extends BaseEvent {
   type: typeof EVT_PERMISSION_REQ;
   toolName: string;
   message: string;
+  toolInput?: unknown;      // 原始工具输入（hook 路径透传，可展开查看详情）
+  requestId?: string;       // hook 路径的权限请求 ID（存于 messageId）
 }
 
 export interface PermissionAskEvent extends BaseEvent {
   type: typeof EVT_PERMISSION_ASK;
   toolName: string;
   message: string;
+  toolInput?: unknown;
+  requestId?: string;
 }
 
 export interface TurnEndEvent extends BaseEvent {

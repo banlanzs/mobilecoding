@@ -64,6 +64,26 @@ function loadMessages(): DisplayMessage[] {
   }
 }
 
+// 权限白名单：会话级"始终允许此工具"，持久化到 localStorage
+const PERM_ALLOWLIST_KEY = 'mc-perm-allowlist';
+function loadPermAllowlist(): string[] {
+  try {
+    const raw = localStorage.getItem(PERM_ALLOWLIST_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function savePermAllowlist(items: string[]): void {
+  try {
+    localStorage.setItem(PERM_ALLOWLIST_KEY, JSON.stringify(items));
+  } catch {
+    // ignore
+  }
+}
+
 export interface AgentStateInfo {
   status: string;       // "idle" | "thinking" | "reading_files" | "editing_files" | "running_command"
   toolName?: string;
@@ -90,6 +110,8 @@ export interface ChatState {
   agentState: AgentStateInfo;
   contextWindow: { used: number; max: number } | null; // 最近 context_window 事件的用量，供 SessionBar 进度条
   pendingQueue: string[]; // 断线期间排队的输入，重连后自动重发
+  permAllowlist: string[]; // 会话级权限白名单：这些 toolName 自动允许（持久化 localStorage）
+  permAllowAllTurn: boolean; // 本轮全部允许权限请求，turn 结束后清除
 }
 
 type Action =
@@ -108,7 +130,10 @@ type Action =
   | { type: 'SET_SELECTED_COMMAND'; command: string }
   | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' }
   | { type: 'QUEUE_INPUT'; text: string }
-  | { type: 'CLEAR_PENDING' };
+  | { type: 'CLEAR_PENDING' }
+  | { type: 'PERM_ALLOW_TOOL'; toolName: string }
+  | { type: 'PERM_ALLOW_ALL_TURN' }
+  | { type: 'PERM_CLEAR_ALLOWLIST' };
 
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
@@ -323,6 +348,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'turn_end') {
         next.turnActive = false;
         next.thinking = false;
+        next.permAllowAllTurn = false; // 本轮结束，清除"本轮全部允许"
       }
       // 兜底：lifecycle 事件中的 "turn_end" 表示旧进程退出。
       // 仅在当前没有活跃 turn 时才复位（避免旧进程的残留事件打断新 turn）
@@ -377,7 +403,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, messages: msgs, permissionPrompt: null, permissionRequestId: null };
     }
     case 'ABORT_TURN':
-      return { ...state, thinking: false, turnActive: false };
+      return { ...state, thinking: false, turnActive: false, permAllowAllTurn: false };
     case 'STOPPING':
       return { ...state, stopping: true, thinking: false, turnActive: false };
     case 'QUEUE_INPUT':
@@ -389,6 +415,16 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'CLEAR_PENDING':
       if (state.pendingQueue.length === 0) return state;
       return { ...state, pendingQueue: [] };
+    case 'PERM_ALLOW_TOOL':
+      if (state.permAllowlist.includes(action.toolName)) return state;
+      savePermAllowlist([...state.permAllowlist, action.toolName]);
+      return { ...state, permAllowlist: [...state.permAllowlist, action.toolName] };
+    case 'PERM_ALLOW_ALL_TURN':
+      return { ...state, permAllowAllTurn: true };
+    case 'PERM_CLEAR_ALLOWLIST':
+      if (state.permAllowlist.length === 0 && !state.permAllowAllTurn) return state;
+      savePermAllowlist([]);
+      return { ...state, permAllowlist: [], permAllowAllTurn: false };
     case 'ERROR':
       // 错误时不重置 turnActive（可能只是网络抖动，会话还在）
       return { ...state, lastError: action.error };
@@ -422,6 +458,8 @@ const initialState: ChatState = {
   agentState: { status: 'idle', since: Date.now() },
   contextWindow: null,
   pendingQueue: [],
+  permAllowlist: loadPermAllowlist(),
+  permAllowAllTurn: false,
 };
 
 // 从 context_window 事件的 toolInput 提取 token 用量
@@ -464,6 +502,9 @@ interface ChatContextValue {
   sendStop: () => Promise<void>;
   abortTurn: () => Promise<void>;
   answerPermission: (allow: boolean, toolName: string, requestId?: string) => Promise<void>;
+  allowToolThisSession: (toolName: string) => void;
+  allowAllThisTurn: () => void;
+  clearPermAllowlist: () => void;
   dismissPermission: () => void;
   setSelectedCommand: (command: string) => void;
   viewSession: (sessionId: string) => Promise<void>;
@@ -849,6 +890,31 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
     }, [client, state.connectionMode]);
 
+  const allowToolThisSession = useCallback((toolName: string) => {
+    dispatch({ type: 'PERM_ALLOW_TOOL', toolName });
+  }, []);
+  const allowAllThisTurn = useCallback(() => {
+    dispatch({ type: 'PERM_ALLOW_ALL_TURN' });
+  }, []);
+  const clearPermAllowlist = useCallback(() => {
+    dispatch({ type: 'PERM_CLEAR_ALLOWLIST' });
+  }, []);
+
+  // 自动应答：收到权限请求时，若 toolName 在白名单或开启了"本轮全部允许"，
+  // 自动调 answerPermission(true)，避免逐个点按钮。
+  const answerPermRef = useRef(answerPermission);
+  useEffect(() => { answerPermRef.current = answerPermission; }, [answerPermission]);
+  useEffect(() => {
+    const prompt = state.permissionPrompt;
+    if (!prompt) return;
+    const autoAllow =
+      state.permAllowAllTurn || state.permAllowlist.includes(prompt.toolName);
+    if (!autoAllow) return;
+    const requestId = state.permissionRequestId || (prompt as { messageId?: string }).messageId || undefined;
+    // 异步应答，避免在 reducer/effect 同步路径中触发再次 dispatch 的竞争
+    void answerPermRef.current(true, prompt.toolName, requestId);
+  }, [state.permissionPrompt, state.permissionRequestId, state.permAllowlist, state.permAllowAllTurn]);
+
   const value: ChatContextValue = {
     state,
     ws: client,
@@ -857,6 +923,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
     sendStop,
     abortTurn,
     answerPermission,
+    allowToolThisSession,
+    allowAllThisTurn,
+    clearPermAllowlist,
     dismissPermission,
     setSelectedCommand,
     viewSession,
