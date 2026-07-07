@@ -12,16 +12,19 @@ import (
 
 // SessionMeta 会话元数据，用于会话列表展示和恢复。
 type SessionMeta struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`         // 用户自定义名称或自动生成
-	Agent        string    `json:"agent"`        // claude/codex/opencode
-	Model        string    `json:"model"`        // 使用的模型
-	CWD          string    `json:"cwd"`          // 工作目录
-	Status       string    `json:"status"`       // active/inactive/archived
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	LastActiveAt time.Time `json:"lastActiveAt"` // 最后活跃时间
-	MessageCount int       `json:"messageCount"` // 消息数量
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`           // 用户自定义名称或自动生成
+	Agent          string    `json:"agent"`          // claude/codex/opencode
+	Model          string    `json:"model"`          // 使用的模型
+	CWD            string    `json:"cwd"`            // 工作目录
+	Status         string    `json:"status"`         // active/inactive/archived
+	ResumeSessionID string   `json:"resumeSessionId,omitempty"` // Claude 内部 session_id，用于 --resume 续聊
+	Command        string    `json:"command,omitempty"`         // 启动命令，用于恢复时重建 args
+	Args           []string  `json:"args,omitempty"`            // 启动参数，用于恢复时重建
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+	LastActiveAt   time.Time `json:"lastActiveAt"` // 最后活跃时间
+	MessageCount   int       `json:"messageCount"` // 消息数量
 }
 
 // Store 会话元数据持久化存储（基于 JSON 文件）。

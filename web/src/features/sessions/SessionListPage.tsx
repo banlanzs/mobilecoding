@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { SessionMeta } from '../../core/ws/types'
+import { useChat } from '../../core/state/ChatContext'
 import { SessionCard } from './SessionCard'
 import './sessions.css'
 
 export function SessionListPage() {
   const navigate = useNavigate()
+  const { sendStart, sendStop } = useChat()
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [resuming, setResuming] = useState<string | null>(null)
 
   useEffect(() => {
     loadSessions()
@@ -52,7 +55,6 @@ export function SessionListPage() {
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-
     if (!confirm('确认删除此会话吗？')) {
       return
     }
@@ -70,16 +72,58 @@ export function SessionListPage() {
         throw new Error('删除会话失败')
       }
 
-      // 重新加载列表
       loadSessions()
     } catch (err) {
       alert(err instanceof Error ? err.message : '删除会话失败')
     }
   }
 
+  const handleRenameSession = async (sessionId: string, name: string) => {
+    const token = localStorage.getItem('mobilecoding.token')
+    const response = await fetch(`/api/v1/sessions/${sessionId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    })
+    if (!response.ok) {
+      const msg = await response.text().catch(() => '重命名失败')
+      throw new Error(msg)
+    }
+    // 更新本地列表，避免完整重载
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, name } : s))
+    )
+  }
+
+  // 恢复历史会话：停当前 → 用历史的 command/args/resumeSessionId 启动 → 跳转终端
+  const handleResume = async (session: SessionMeta) => {
+    if (resuming) return
+    setResuming(session.id)
+    try {
+      // 停止当前活跃会话（若有）
+      try {
+        await sendStop()
+      } catch {
+        // 当前无活跃会话或已停止，忽略
+      }
+      await sendStart({
+        command: session.command || session.agent,
+        args: session.args,
+        cwd: session.cwd,
+        resumeSessionId: session.resumeSessionId,
+      })
+      navigate('/')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '恢复会话失败')
+    } finally {
+      setResuming(null)
+    }
+  }
+
   const handleCreateSession = () => {
-    // 当前实现：直接跳转到终端页面（使用默认 agent）
-    // 未来可以添加创建会话弹窗
     navigate('/sessions/new')
   }
 
@@ -124,6 +168,8 @@ export function SessionListPage() {
               session={session}
               onClick={() => handleSessionClick(session.id)}
               onDelete={(e) => handleDeleteSession(session.id, e)}
+              onRename={handleRenameSession}
+              onResume={resuming === null ? handleResume : undefined}
             />
           ))}
         </div>

@@ -108,6 +108,7 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/sessions", sessionsListHandler(deps.Session))
 		r.Post("/sessions", sessionsCreateHandler(deps.Session))
 		r.Get("/sessions/{id}", sessionsGetHandler(deps.Session))
+		r.Patch("/sessions/{id}", sessionsRenameHandler(deps.Session))
 		r.Delete("/sessions/{id}", sessionsDeleteHandler(deps.Session))
 
 		// Git 文件变更 API

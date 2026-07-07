@@ -243,6 +243,7 @@ export interface SessionStartParams {
   args?: string[];
   cwd?: string;
   restart?: boolean;
+  resumeSessionId?: string; // Claude 内部 session_id，用于恢复历史会话
 }
 
 export interface SessionStartResult {
@@ -266,6 +267,9 @@ export interface SessionMeta {
   model?: string;
   cwd?: string;
   status: string;
+  resumeSessionId?: string; // Claude 内部 session_id，用于 --resume 续聊
+  command?: string;         // 启动命令，用于恢复
+  args?: string[];          // 启动参数，用于恢复
   createdAt: string;
   updatedAt: string;
   lastActiveAt: string;

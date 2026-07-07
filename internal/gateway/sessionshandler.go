@@ -116,3 +116,47 @@ func sessionsDeleteHandler(mgr *session.Manager) http.HandlerFunc {
 		})
 	}
 }
+
+// sessionsRenameHandler 更新会话元数据（当前仅支持 name）。
+// PATCH /api/v1/sessions/:id
+// Body: { "name": "新名称" }
+func sessionsRenameHandler(mgr *session.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if mgr == nil {
+			http.Error(w, "session manager not available", http.StatusServiceUnavailable)
+			return
+		}
+
+		id := chi.URLParam(r, "id")
+		if id == "" {
+			http.Error(w, "session id required", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := mgr.RenameSession(id, req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		meta, err := mgr.GetSession(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(meta)
+	}
+}
