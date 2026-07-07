@@ -164,6 +164,30 @@ function reducer(state: ChatState, action: Action): ChatState {
       };
     }
     case 'ACTIVE_SESSION_DETECTED': {
+      // 后端返回的活跃会话 id 与本地缓存不一致 → 是一个新会话（如服务重启后重新启动的会话），
+      // 清空 localStorage 里上一次会话残留的消息缓存，避免把旧会话历史显示到新会话里。
+      const isNewSession = state.sessionId !== null && state.sessionId !== action.sessionId;
+      if (isNewSession) {
+        try {
+          localStorage.setItem('mobilecoding.sessionId', action.sessionId);
+          localStorage.removeItem('mobilecoding.messages');
+        } catch {}
+        saveLastSeq(0);
+        return {
+          ...state,
+          sessionId: action.sessionId,
+          stoppedSessionId: null,
+          lastError: null,
+          messages: [],
+          lastSeq: 0,
+          thinking: false,
+          turnActive: false,
+          permissionPrompt: null,
+          permissionRequestId: null,
+          agentState: { status: 'idle', since: Date.now() },
+          contextWindow: null,
+        };
+      }
       return {
         ...state,
         sessionId: action.sessionId,
