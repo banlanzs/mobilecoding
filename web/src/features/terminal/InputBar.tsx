@@ -75,6 +75,16 @@ export function InputBar() {
   const historyCursorRef = useRef<number | null>(null);
   // 进入历史浏览前保存的当前输入，便于按"下"回到原值
   const savedDraftRef = useRef<string>('');
+  // 窄屏检测：简化 placeholder 文案，避免被截断丢失操作说明
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 480px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 480px)');
+    const handler = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // 切换会话时加载对应草稿
   useEffect(() => {
@@ -251,10 +261,10 @@ export function InputBar() {
   const placeholder = state.readOnly
     ? '历史会话只读'
     : remoteCliNotReady
-    ? '桌面 CLI 未就绪，请确认 mc claude 会话仍在运行'
+    ? (narrow ? 'CLI 未就绪' : '桌面 CLI 未就绪，请确认 mc claude 会话仍在运行')
     : isActive
-    ? 'AI 响应中… (Enter 中止)'
-    : '输入消息… (Enter 发送, Shift+Enter 换行)';
+    ? (narrow ? '响应中…' : 'AI 响应中… (Enter 中止)')
+    : (narrow ? '输入消息…' : '输入消息… (Enter 发送, Shift+Enter 换行)');
 
   return (
     <div className="input-bar">

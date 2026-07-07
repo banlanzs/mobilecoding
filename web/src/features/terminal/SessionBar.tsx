@@ -322,7 +322,7 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
             </button>
           )}
           <button
-            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            className={`btn btn-danger btn-stop-isolated${confirmStop ? ' btn-confirm-stop' : ''}`}
             onClick={handleStop}
             disabled={state.stopping}
             title={confirmStop ? '再次点击确认停止' : '停止会话'}

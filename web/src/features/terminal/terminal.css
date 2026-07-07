@@ -193,6 +193,14 @@
   white-space: nowrap;
 }
 
+.agent-meta-clickable {
+  cursor: pointer;
+  transition: color var(--mc-motion);
+}
+.agent-meta-clickable:hover {
+  color: var(--mc-accent);
+}
+
 .agent-state {
   font-family: var(--mc-font-mono);
   font-size: 11px;
@@ -495,6 +503,15 @@
   background: color-mix(in oklab, var(--mc-danger) 22%, transparent);
 }
 
+/* Stop 按钮隔离：推到右侧 + 左边框分隔，避免和高频按钮混排误触 */
+.btn-stop-isolated {
+  margin-left: auto;
+  padding-left: 10px;
+  border-left: 1px solid var(--mc-border);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* 双重确认停止按钮状态 */
 .btn-confirm-stop {
   background: var(--mc-danger);
@@ -557,12 +574,15 @@
 
 /* ─── 消息卡片通用 ──────────────────────────────────────────────────── */
 .card {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--mc-border-soft);
+  padding: 10px 14px;
+  margin: 6px 10px;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-md);
 }
 
 .card:last-child {
-  border-bottom: none;
+  margin-bottom: 10px;
 }
 
 .card-header {
@@ -837,14 +857,23 @@
 
 /* ─── 用户消息 ──────────────────────────────────────────────────────── */
 .card-user {
-  background: color-mix(in oklab, var(--mc-accent) 7%, transparent);
+  margin-left: 15%;
+  background: var(--mc-purple-soft);
+  border-color: var(--mc-purple-border);
 }
 
 .card-user .card-badge {
-  background: color-mix(in oklab, var(--mc-success) 16%, transparent);
-  color: var(--mc-success);
+  background: var(--mc-purple);
+  color: var(--mc-bg);
 }
 
+/* 用户消息右对齐：header 内容右靠，badge 顺序反转 */
+.card-user .card-header {
+  justify-content: flex-end;
+}
+.card-user .card-header .card-badge {
+  order: 2;
+}
 .card-user pre {
   margin: 4px 0;
   white-space: pre-wrap;
@@ -852,6 +881,12 @@
   font-family: var(--mc-font-body);
   font-size: 13.5px;
   color: var(--mc-fg);
+  text-align: right;
+}
+
+/* 助手消息左对齐，留出右侧空间与用户气泡对称 */
+.card-text {
+  margin-right: 15%;
 }
 
 /* ─── 工具使用卡片 ──────────────────────────────────────────────────── */
@@ -1272,7 +1307,7 @@
   gap: 8px;
   overflow-x: auto;
   white-space: nowrap;
-  padding-bottom: 2px;
+  padding: 0 2px 6px;
   scrollbar-width: none;
 }
 
@@ -1286,7 +1321,8 @@
   color: var(--mc-fg-2);
   font-family: var(--mc-font-mono);
   font-size: 12px;
-  padding: 4px 10px;
+  min-height: 32px;
+  padding: 6px 14px;
   border-radius: 99px;
   cursor: pointer;
   white-space: nowrap;
