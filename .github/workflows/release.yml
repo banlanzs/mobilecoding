@@ -98,6 +98,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Accept Android SDK licenses
+        if: steps.has_key.outputs.skip != 'true'
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          # 预先接受所有 SDK license（含 Google TV/XR 等附加 license），
+          # 避免 setup-android 装 package 时卡在交互式 license 确认
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
       - name: Setup Android SDK
         if: steps.has_key.outputs.skip != 'true'
         uses: android-actions/setup-android@v3
