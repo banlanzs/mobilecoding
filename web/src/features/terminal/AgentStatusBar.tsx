@@ -1,4 +1,5 @@
 // Agent 状态栏 — 头像 + 名称（按真实 CLI 动态）+ 实时状态徽章
+import { useState } from 'react';
 import { useChat } from '../../core/state/ChatContext';
 
 // 头像/名称按当前 CLI 动态显示（项目支持多 CLI，不写死 Claude）
@@ -20,6 +21,7 @@ const STATE_LABELS: Record<string, string> = {
 export function AgentStatusBar() {
   const { state } = useChat();
   const { agentState } = state;
+  const [copied, setCopied] = useState(false);
 
   const command = state.selectedCommand || state.runtime.defaultCommand || 'claude';
   const cli = CLI_INFO[command] || { avatar: '◆', name: 'AI Agent' };
@@ -45,13 +47,30 @@ export function AgentStatusBar() {
     ? `session ${state.sessionId.slice(0, 8)}…`
     : state.status === 'connected' ? '已连接' : '等待连接';
 
+  const copySessionId = async () => {
+    if (!state.sessionId) return;
+    try {
+      await navigator.clipboard.writeText(state.sessionId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="agent-status-bar">
       <div className="agent-info">
         <div className="agent-avatar">{cli.avatar}</div>
         <div>
           <div className="agent-name">{cli.name}</div>
-          <div className="agent-meta">{meta}</div>
+          <div
+            className={`agent-meta${state.sessionId ? ' agent-meta-clickable' : ''}`}
+            onClick={state.sessionId ? copySessionId : undefined}
+            title={state.sessionId ? `点击复制完整 ID: ${state.sessionId}` : undefined}
+          >
+            {state.sessionId && copied ? '已复制 ✓' : meta}
+          </div>
         </div>
       </div>
       <div className={`agent-state ${stateClass}`}>

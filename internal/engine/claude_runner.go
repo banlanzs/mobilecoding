@@ -37,6 +37,11 @@ type ClaudeRunner struct {
 	resumeSessionID string         // Claude 内部 session id，用于 --resume
 	currentStdin    io.WriteCloser // 当前运行进程的 stdin（用于权限应答）
 	wg              sync.WaitGroup // 追踪活跃 goroutines
+
+	// OnResumeIDChanged 在捕获到新的 Claude session_id 时触发，
+	// 供上层（session.Manager）持久化到 SessionMeta，用于跨进程恢复续聊。
+	// 可为 nil。调用方应避免在回调中持有 runner 锁。
+	OnResumeIDChanged func(sid string)
 }
 
 func NewClaudeRunner() *ClaudeRunner {
@@ -64,6 +69,13 @@ func (r *ClaudeRunner) GetResumeSessionID() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.resumeSessionID
+}
+
+// SetResumeIDCallback 设置 resume ID 变更回调，实现 ResumeIDCallbackSetter。
+func (r *ClaudeRunner) SetResumeIDCallback(cb func(sid string)) {
+	r.mu.Lock()
+	r.OnResumeIDChanged = cb
+	r.mu.Unlock()
 }
 
 func (r *ClaudeRunner) Start(ctx context.Context, req ExecRequest) error {
@@ -263,7 +275,11 @@ func (r *ClaudeRunner) captureResumeID(line []byte) {
 	if sid, ok := m["session_id"].(string); ok && sid != "" {
 		r.mu.Lock()
 		r.resumeSessionID = sid
+		cb := r.OnResumeIDChanged
 		r.mu.Unlock()
+		if cb != nil {
+			cb(sid)
+		}
 	}
 }
 

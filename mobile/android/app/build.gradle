@@ -82,8 +82,9 @@ android {
         applicationId "com.mobilecodingmobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI 通过环境变量注入版本号（从 git tag 推导）；本地 fallback 到 1.0
+        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
+        versionName System.getenv("VERSION_NAME") ?: "1.0"
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {
@@ -93,15 +94,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // release 签名从环境变量读取（CI 注入）；本地缺失时 fallback 到 debug
+        release {
+            storeFile System.getenv("RELEASE_STORE_FILE") ? file(System.getenv("RELEASE_STORE_FILE")) : null
+            storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: ''
+            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: ''
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: ''
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // 有 release keystore 配置时用正式签名，否则 fallback 到 debug（本地开发）
+            signingConfig System.getenv("RELEASE_STORE_FILE") ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

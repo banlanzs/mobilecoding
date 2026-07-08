@@ -99,3 +99,19 @@ test('ignores hidden events like context_window and plan_mode', () => {
 
   expect(store.getState().messages).toHaveLength(0)
 })
+
+test('context_window 事件解析到独立状态字段，不进入 messages', () => {
+  const store = createMessageStore()
+
+  store.getState().handleEvent({
+    type: 'context_window',
+    sessionId: 's1',
+    time: '2026-06-08T00:00:00Z',
+    toolInput: { used_tokens: 87000, total_tokens: 200000 }
+  } as any, 's1')
+
+  expect(store.getState().messages).toHaveLength(0)
+  expect(store.getState().contextWindow).not.toBeNull()
+  expect(store.getState().contextWindow?.used).toBe(87000)
+  expect(store.getState().contextWindow?.total).toBe(200000)
+})

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // runClaude 处理 `mobilecoding claude [flags]` 子命令。
@@ -16,6 +17,19 @@ func runClaude(extraArgs []string) {
 	resume := fs.String("resume", "", "Resume session ID")
 	if err := fs.Parse(extraArgs); err != nil {
 		os.Exit(1)
+	}
+
+	// 未显式指定 settings 时，优先探测项目级 .claude/settings.local.json。
+	// 找到则用 --settings 显式传入（确保项目级 local 优先于全局 settings.json）；
+	// 找不到则不传 --settings，由 claude 自行回退到 ~/.claude/settings.json。
+	settingsSource := "全局默认"
+	if *settings == "" {
+		if detected := detectProjectSettings(); detected != "" {
+			*settings = detected
+			settingsSource = "项目级自动探测"
+		}
+	} else {
+		settingsSource = "命令行指定"
 	}
 
 	var args []string
@@ -30,7 +44,7 @@ func runClaude(extraArgs []string) {
 	}
 	args = append(args, fs.Args()...)
 
-	fmt.Fprintf(os.Stderr, "  配置文件: %s\n", displayClaudeSettings(*settings))
+	fmt.Fprintf(os.Stderr, "  配置文件: %s (%s)\n", displayClaudeSettings(*settings), settingsSource)
 	fmt.Fprintf(os.Stderr, "  模型: %s\n", displayClaudeModel(*model))
 	if *resume != "" {
 		fmt.Fprintf(os.Stderr, "  恢复会话: %s\n", *resume)
@@ -46,6 +60,27 @@ func runClaude(extraArgs []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// detectProjectSettings 在当前工作目录下探测 .claude/settings.local.json。
+// 返回找到的绝对路径；不存在则返回空字符串。
+// 优先级：项目级 settings.local.json（本地覆盖、不入 git）。
+func detectProjectSettings() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return detectProjectSettingsIn(cwd)
+}
+
+// detectProjectSettingsIn 在指定目录下探测 .claude/settings.local.json。
+// 抽出 cwd 参数便于测试。
+func detectProjectSettingsIn(dir string) string {
+	candidate := filepath.Join(dir, ".claude", "settings.local.json")
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		return candidate
+	}
+	return ""
 }
 
 func displayClaudeSettings(settings string) string {

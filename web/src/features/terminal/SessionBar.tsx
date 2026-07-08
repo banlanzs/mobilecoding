@@ -4,6 +4,7 @@ import { useChat } from '../../core/state/ChatContext';
 import {
   argsWithModel,
   modelFromArgs,
+  settingsFromArgs,
   type ModelOption,
 } from './sessionControls';
 
@@ -20,13 +21,11 @@ interface ClaudeSetting {
 }
 
 interface SessionBarProps {
-  onBack?: () => void;
-  currentSessionId?: string; // 预留给未来的会话恢复功能
   onToggleFiles?: () => void;
   showFiles?: boolean;
 }
 
-export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles }: SessionBarProps) {
+export function SessionBar({ onToggleFiles, showFiles }: SessionBarProps) {
   const { state, sendStart, sendStop, setSelectedCommand } = useChat();
   const [command, setCommand] = useState('claude');
   const [model, setModel] = useState<string | null>(null);
@@ -82,17 +81,33 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
       const res = await fetch('/api/v1/claude-settings', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      let data: ClaudeSetting[] = [];
       if (res.ok) {
-        const data: ClaudeSetting[] = await res.json();
-        setClaudeSettings(data);
-        if (data.length > 0) {
-          setSelectedSetting(data[0].path);
-        }
+        data = await res.json();
       }
+
+      // 实际生效的 settings：优先取 runtime.defaultArgs 里的 --settings 路径
+      // （mc claude 自动探测项目级 settings.local.json 时会通过 -default-args 传入）。
+      // 这样模型列表与当前实际使用的 settings 一致，而非全局列表的第一个。
+      const activeSettings = settingsFromArgs(state.runtime.defaultArgs || []);
+      if (activeSettings) {
+        const exists = data.some((s) => s.path === activeSettings);
+        if (!exists) {
+          // 项目级 settings.local.json 不在全局 ~/.claude/ 列表里，补进去
+          data = [
+            { name: '项目级', path: activeSettings },
+            ...data,
+          ];
+        }
+        setSelectedSetting(activeSettings);
+      } else if (data.length > 0) {
+        setSelectedSetting(data[0].path);
+      }
+      setClaudeSettings(data);
     } catch {
       // 忽略错误，不显示配置下拉
     }
-  }, []);
+  }, [state.runtime.defaultArgs]);
 
   useEffect(() => {
     if (state.status === 'connected' && state.connectionMode === 'direct') {
@@ -210,31 +225,10 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     </div>
   ) : null;
 
-  if (state.readOnly) {
-    return (
-      <div className="session-bar session-bar-active">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
-        {error && <div className="session-error">{error}</div>}
-        <span className="session-active" title={currentSessionId || state.viewedSessionId || ''}>
-          历史会话，只读
-        </span>
-      </div>
-    );
-  }
-
   // Relay 模式：指示 + 断开
   if (state.connectionMode === 'relay') {
     return (
       <div className="session-bar">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         {error && <div className="session-error">{error}</div>}
         <div className="relay-indicator">
           <span className="relay-dot" />
@@ -259,11 +253,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
     const activeLabel = `${command}${selectedModel ? ` (${selectedModel})` : ''} — active`;
     return (
       <div className="session-bar session-bar-active">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         {error && <div className="session-error">{error}</div>}
         <span className="session-active" title={activeLabel}>
           {activeLabel}
@@ -305,7 +294,7 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
             </button>
           )}
           <button
-            className={`btn btn-danger${confirmStop ? ' btn-confirm-stop' : ''}`}
+            className={`btn btn-danger btn-stop-isolated${confirmStop ? ' btn-confirm-stop' : ''}`}
             onClick={handleStop}
             disabled={state.stopping}
             title={confirmStop ? '再次点击确认停止' : '停止会话'}
@@ -321,11 +310,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   if (state.status === 'connected' && state.runtime.launchMode === 'remote-control') {
     return (
       <div className="session-bar">
-        {onBack && (
-          <button className="btn-back" onClick={onBack} title="返回会话列表">
-            ←
-          </button>
-        )}
         <span className="session-active">🔗 遥控器模式 — 终端 CLI 已连接</span>
       </div>
     );
@@ -334,11 +318,6 @@ export function SessionBar({ onBack, currentSessionId, onToggleFiles, showFiles 
   // mobilecoding 托管模式：连接后仍显示完整选择界面，由手机端启动 session
   return (
     <div className="session-bar session-bar-setup">
-      {onBack && (
-        <button className="btn-back" onClick={onBack} title="返回会话列表">
-          ←
-        </button>
-      )}
       {error && <div className="session-error">{error}</div>}
 
       <select

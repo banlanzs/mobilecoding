@@ -196,8 +196,10 @@ export class WSClient {
 
       if (env.ok) {
         pending.resolve(env.result);
+      } else if ('error' in env) {
+        pending.reject(new Error(env.error.message || 'rpc error'));
       } else {
-        pending.reject(new Error(env.error?.message || 'rpc error'));
+        pending.reject(new Error('rpc error'));
       }
       return;
     }

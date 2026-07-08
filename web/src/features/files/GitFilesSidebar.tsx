@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DiffView } from '../terminal/cards/DiffView'
 import './files.css'
 
 interface GitFileStatus {
@@ -215,7 +216,9 @@ export function GitFilesSidebar({ cwd, onClose }: GitFilesSidebarProps) {
             {loadingDiff ? (
               <div className="diff-loading">加载中...</div>
             ) : (
-              <pre className="diff-content">{diff}</pre>
+              <div className="diff-content">
+                <DiffView diff={diff} />
+              </div>
             )}
           </div>
         )}

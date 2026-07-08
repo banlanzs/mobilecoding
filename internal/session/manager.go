@@ -73,16 +73,30 @@ func (m *Manager) Start(ctx context.Context, req ExecRequest, run engine.Runner)
 	// 创建会话元数据
 	if m.store != nil {
 		m.metadata = &SessionMeta{
-			ID:     m.sid,
-			Name:   generateSessionName(req.Command),
-			Agent:  req.Command,
-			Model:  extractModelFromArgs(req.Args),
-			CWD:    req.CWD,
-			Status: "active",
+			ID:              m.sid,
+			Name:            generateSessionName(req.Command),
+			Agent:           req.Command,
+			Model:           extractModelFromArgs(req.Args),
+			CWD:             req.CWD,
+			Status:          "active",
+			Command:         req.Command,
+			Args:            req.Args,
+			ResumeSessionID: req.ResumeSessionID,
 		}
 		if err := m.store.Create(m.metadata); err != nil {
 			m.log("session", "failed to save session metadata: %v", err)
 			// 不阻塞会话启动
+		}
+		// 注入 resume ID 回调：runner 捕获到新 session_id 时持久化，供跨进程恢复
+		if setter, ok := engine.Runner(run).(engine.ResumeIDCallbackSetter); ok {
+			sid := m.sid
+			setter.SetResumeIDCallback(func(resumeID string) {
+				if err := m.store.Update(sid, func(meta *SessionMeta) {
+					meta.ResumeSessionID = resumeID
+				}); err != nil {
+					m.log("session", "failed to persist resume id: %v", err)
+				}
+			})
 		}
 	}
 	m.mu.Unlock()
@@ -125,6 +139,9 @@ func (m *Manager) Restart(ctx context.Context, req ExecRequest, run engine.Runne
 		m.metadata.Model = extractModelFromArgs(req.Args)
 		m.metadata.CWD = req.CWD
 		m.metadata.Status = "active"
+		m.metadata.Command = req.Command
+		m.metadata.Args = req.Args
+		m.metadata.ResumeSessionID = req.ResumeSessionID
 	}
 	if m.store != nil && sid != "" {
 		if err := m.store.Update(sid, func(meta *SessionMeta) {
@@ -132,8 +149,21 @@ func (m *Manager) Restart(ctx context.Context, req ExecRequest, run engine.Runne
 			meta.Model = extractModelFromArgs(req.Args)
 			meta.CWD = req.CWD
 			meta.Status = "active"
+			meta.Command = req.Command
+			meta.Args = req.Args
+			meta.ResumeSessionID = req.ResumeSessionID
 		}); err != nil {
 			m.log("session", "failed to update session metadata: %v", err)
+		}
+		// 注入 resume ID 回调（同 Start）
+		if setter, ok := engine.Runner(run).(engine.ResumeIDCallbackSetter); ok {
+			setter.SetResumeIDCallback(func(resumeID string) {
+				if err := m.store.Update(sid, func(meta *SessionMeta) {
+					meta.ResumeSessionID = resumeID
+				}); err != nil {
+					m.log("session", "failed to persist resume id: %v", err)
+				}
+			})
 		}
 	}
 	m.mu.Unlock()
@@ -244,47 +274,6 @@ func (m *Manager) Stop() error {
 
 	m.log("session", "stopping runner")
 	return run.Close()
-}
-
-// ListSessions 返回所有会话元数据。
-func (m *Manager) ListSessions() ([]*SessionMeta, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return nil, errors.New("session store not configured")
-	}
-
-	return m.store.List(), nil
-}
-
-// GetSession 获取单个会话元数据。
-func (m *Manager) GetSession(id string) (*SessionMeta, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return nil, errors.New("session store not configured")
-	}
-
-	return m.store.Get(id)
-}
-
-// DeleteSession 删除会话元数据。
-func (m *Manager) DeleteSession(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.store == nil {
-		return errors.New("session store not configured")
-	}
-
-	// 不允许删除当前活跃会话
-	if id == m.sid {
-		return errors.New("cannot delete active session")
-	}
-
-	return m.store.Delete(id)
 }
 
 // Write 把 p 写入当前活跃 runner。

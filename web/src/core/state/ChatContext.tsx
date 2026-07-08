@@ -64,6 +64,26 @@ function loadMessages(): DisplayMessage[] {
   }
 }
 
+// 权限白名单：会话级"始终允许此工具"，持久化到 localStorage
+const PERM_ALLOWLIST_KEY = 'mc-perm-allowlist';
+function loadPermAllowlist(): string[] {
+  try {
+    const raw = localStorage.getItem(PERM_ALLOWLIST_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function savePermAllowlist(items: string[]): void {
+  try {
+    localStorage.setItem(PERM_ALLOWLIST_KEY, JSON.stringify(items));
+  } catch {
+    // ignore
+  }
+}
+
 export interface AgentStateInfo {
   status: string;       // "idle" | "thinking" | "reading_files" | "editing_files" | "running_command"
   toolName?: string;
@@ -73,8 +93,6 @@ export interface AgentStateInfo {
 export interface ChatState {
   status: ConnectionStatus;
   sessionId: string | null; // 当前活跃 runner 的 session id
-  viewedSessionId: string | null; // 当前页面正在查看的 session id
-  readOnly: boolean; // true 表示历史会话只读，不向 active runner 发送输入
   stoppedSessionId: string | null;
   messages: DisplayMessage[];
   lastSeq: number; // 最后收到的消息 seq，用于断线重连补发
@@ -89,6 +107,9 @@ export interface ChatState {
   stopping: boolean; // 正在停止会话，阻止事件重新激活 turn
   agentState: AgentStateInfo;
   contextWindow: { used: number; max: number } | null; // 最近 context_window 事件的用量，供 SessionBar 进度条
+  pendingQueue: string[]; // 断线期间排队的输入，重连后自动重发
+  permAllowlist: string[]; // 会话级权限白名单：这些 toolName 自动允许（持久化 localStorage）
+  permAllowAllTurn: boolean; // 本轮全部允许权限请求，turn 结束后清除
 }
 
 type Action =
@@ -96,7 +117,6 @@ type Action =
   | { type: 'RUNTIME_LOADED'; runtime: RuntimeConfig }
   | { type: 'SESSION_STARTED'; sessionId: string }
   | { type: 'ACTIVE_SESSION_DETECTED'; sessionId: string }
-  | { type: 'VIEW_SESSION_HISTORY'; sessionId: string; messages: DisplayMessage[]; lastSeq: number; readOnly: boolean }
   | { type: 'SESSION_STOPPED' }
   | { type: 'EVENT_RECEIVED'; event: AppEvent; sessionId?: string }
   | { type: 'USER_MESSAGE_SENT'; text: string; sessionId: string }
@@ -105,7 +125,12 @@ type Action =
   | { type: 'STOPPING' }
   | { type: 'ERROR'; error: string }
   | { type: 'SET_SELECTED_COMMAND'; command: string }
-  | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' };
+  | { type: 'SET_CONNECTION_MODE'; mode: 'direct' | 'relay' }
+  | { type: 'QUEUE_INPUT'; text: string }
+  | { type: 'CLEAR_PENDING' }
+  | { type: 'PERM_ALLOW_TOOL'; toolName: string }
+  | { type: 'PERM_ALLOW_ALL_TURN' }
+  | { type: 'PERM_CLEAR_ALLOWLIST' };
 
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.type) {
@@ -125,8 +150,6 @@ function reducer(state: ChatState, action: Action): ChatState {
       return {
         ...state,
         sessionId: action.sessionId,
-        viewedSessionId: action.sessionId,
-        readOnly: false,
         stoppedSessionId: null,
         messages: [],
         lastSeq: 0,
@@ -141,40 +164,42 @@ function reducer(state: ChatState, action: Action): ChatState {
       };
     }
     case 'ACTIVE_SESSION_DETECTED': {
-      const viewingSameSession = !state.viewedSessionId || state.viewedSessionId === action.sessionId;
+      // 后端返回的活跃会话 id 与本地缓存不一致 → 是一个新会话（如服务重启后重新启动的会话），
+      // 清空 localStorage 里上一次会话残留的消息缓存，避免把旧会话历史显示到新会话里。
+      const isNewSession = state.sessionId !== null && state.sessionId !== action.sessionId;
+      if (isNewSession) {
+        try {
+          localStorage.setItem('mobilecoding.sessionId', action.sessionId);
+          localStorage.removeItem('mobilecoding.messages');
+        } catch {}
+        saveLastSeq(0);
+        return {
+          ...state,
+          sessionId: action.sessionId,
+          stoppedSessionId: null,
+          lastError: null,
+          messages: [],
+          lastSeq: 0,
+          thinking: false,
+          turnActive: false,
+          permissionPrompt: null,
+          permissionRequestId: null,
+          agentState: { status: 'idle', since: Date.now() },
+          contextWindow: null,
+        };
+      }
       return {
         ...state,
         sessionId: action.sessionId,
-        viewedSessionId: viewingSameSession ? action.sessionId : state.viewedSessionId,
-        readOnly: viewingSameSession ? false : state.readOnly,
         stoppedSessionId: null,
         lastError: null,
       };
     }
-    case 'VIEW_SESSION_HISTORY':
-      saveLastSeq(action.lastSeq);
-      return {
-        ...state,
-        viewedSessionId: action.sessionId,
-        readOnly: action.readOnly,
-        messages: action.messages,
-        lastSeq: action.lastSeq,
-        lastError: null,
-        thinking: false,
-        turnActive: false,
-        stopping: false,
-        permissionPrompt: null,
-        permissionRequestId: null,
-        agentState: { status: 'idle', since: Date.now() },
-        contextWindow: null,
-      };
     case 'SESSION_STOPPED':
       try { localStorage.removeItem('mobilecoding.sessionId'); } catch {}
       return {
         ...state,
         sessionId: null,
-        viewedSessionId: null,
-        readOnly: false,
         stoppedSessionId: state.sessionId || state.stoppedSessionId,
         permissionPrompt: null,
         permissionRequestId: null,
@@ -197,10 +222,6 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'EVENT_RECEIVED': {
       const ev = action.event;
       console.log('[DEBUG] EVENT_RECEIVED:', ev.type, ev);
-
-      if (state.readOnly) {
-        return state;
-      }
 
       if (action.sessionId && action.sessionId === state.stoppedSessionId) {
         console.log('[DEBUG] Ignoring event for stopped session:', action.sessionId);
@@ -271,7 +292,6 @@ function reducer(state: ChatState, action: Action): ChatState {
         ...state,
         messages,
         sessionId: state.sessionId || (!state.stopping ? action.sessionId || null : null),
-        viewedSessionId: state.viewedSessionId || state.sessionId || (!state.stopping ? action.sessionId || null : null),
       };
 
       // 追踪最新 seq（持久化到 localStorage）
@@ -320,6 +340,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       if (ev.type === 'turn_end') {
         next.turnActive = false;
         next.thinking = false;
+        next.permAllowAllTurn = false; // 本轮结束，清除"本轮全部允许"
       }
       // 兜底：lifecycle 事件中的 "turn_end" 表示旧进程退出。
       // 仅在当前没有活跃 turn 时才复位（避免旧进程的残留事件打断新 turn）
@@ -374,9 +395,28 @@ function reducer(state: ChatState, action: Action): ChatState {
       return { ...state, messages: msgs, permissionPrompt: null, permissionRequestId: null };
     }
     case 'ABORT_TURN':
-      return { ...state, thinking: false, turnActive: false };
+      return { ...state, thinking: false, turnActive: false, permAllowAllTurn: false };
     case 'STOPPING':
       return { ...state, stopping: true, thinking: false, turnActive: false };
+    case 'QUEUE_INPUT':
+      // 断线期间入队：保留顺序，去重连续相同项
+      if (state.pendingQueue.length > 0 && state.pendingQueue[state.pendingQueue.length - 1] === action.text) {
+        return state;
+      }
+      return { ...state, pendingQueue: [...state.pendingQueue, action.text] };
+    case 'CLEAR_PENDING':
+      if (state.pendingQueue.length === 0) return state;
+      return { ...state, pendingQueue: [] };
+    case 'PERM_ALLOW_TOOL':
+      if (state.permAllowlist.includes(action.toolName)) return state;
+      savePermAllowlist([...state.permAllowlist, action.toolName]);
+      return { ...state, permAllowlist: [...state.permAllowlist, action.toolName] };
+    case 'PERM_ALLOW_ALL_TURN':
+      return { ...state, permAllowAllTurn: true };
+    case 'PERM_CLEAR_ALLOWLIST':
+      if (state.permAllowlist.length === 0 && !state.permAllowAllTurn) return state;
+      savePermAllowlist([]);
+      return { ...state, permAllowlist: [], permAllowAllTurn: false };
     case 'ERROR':
       // 错误时不重置 turnActive（可能只是网络抖动，会话还在）
       return { ...state, lastError: action.error };
@@ -393,8 +433,6 @@ function savedSessionId(): string | null {
 const initialState: ChatState = {
   status: 'idle',
   sessionId: savedSessionId(),
-  viewedSessionId: savedSessionId(),
-  readOnly: false,
   stoppedSessionId: null,
   messages: loadMessages(),
   lastSeq: loadLastSeq(),
@@ -409,6 +447,9 @@ const initialState: ChatState = {
   stopping: false,
   agentState: { status: 'idle', since: Date.now() },
   contextWindow: null,
+  pendingQueue: [],
+  permAllowlist: loadPermAllowlist(),
+  permAllowAllTurn: false,
 };
 
 // 从 context_window 事件的 toolInput 提取 token 用量
@@ -451,9 +492,11 @@ interface ChatContextValue {
   sendStop: () => Promise<void>;
   abortTurn: () => Promise<void>;
   answerPermission: (allow: boolean, toolName: string, requestId?: string) => Promise<void>;
+  allowToolThisSession: (toolName: string) => void;
+  allowAllThisTurn: () => void;
+  clearPermAllowlist: () => void;
   dismissPermission: () => void;
   setSelectedCommand: (command: string) => void;
-  viewSession: (sessionId: string) => Promise<void>;
   connectRelay: (config: RelayConfig) => void;
   disconnectRelay: () => void;
 }
@@ -507,7 +550,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // 断线重连补发：连接成功后，如果有 lastSeq 且有 sessionId，通过 HTTP 补发缺失消息
   useEffect(() => {
     if (status !== 'connected' || state.connectionMode !== 'direct') return;
-    if (state.readOnly || !state.sessionId || state.lastSeq <= 0) return;
+    if (!state.sessionId || state.lastSeq <= 0) return;
     const fetchMissed = async () => {
       try {
         const token = localStorage.getItem('mobilecoding.token');
@@ -533,7 +576,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
     };
     fetchMissed();
-  }, [status, state.connectionMode, state.sessionId, state.lastSeq, state.readOnly]);
+  }, [status, state.connectionMode, state.sessionId, state.lastSeq]);
 
   // 订阅 WebSocket 事件
   useEffect(() => {
@@ -645,8 +688,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const sendInput = useCallback(
     async (text: string): Promise<void> => {
-      if (state.readOnly) {
-        throw new Error('历史会话只读，不能发送消息');
+      // 断线期间：入队等待重连，不立即发送（避免抛错丢失输入）
+      if (state.connectionMode === 'direct' && state.status !== 'connected') {
+        dispatch({ type: 'QUEUE_INPUT', text });
+        return;
       }
 
       if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -706,8 +751,44 @@ export function ChatProvider({ children }: PropsWithChildren) {
         throw err;
       }
     },
-    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.readOnly]
+    [client, refreshActiveSessionId, refreshRuntimeConfig, state.sessionId, state.connectionMode, state.status]
   );
+
+  // 重连后自动重发断线期间排队的输入。
+  // 用 ref 持有最新 sendInput，effect 仅由 status 触发，
+  // 避免 sendInput 闭包重建导致 effect 抖动；flushingRef 防止并发重入。
+  const sendInputRef = useRef(sendInput);
+  useEffect(() => {
+    sendInputRef.current = sendInput;
+  }, [sendInput]);
+  const flushingRef = useRef(false);
+  useEffect(() => {
+    if (status !== 'connected') {
+      flushingRef.current = false;
+      return;
+    }
+    if (state.pendingQueue.length === 0 || flushingRef.current) return;
+    // remote-control 模式下 sessionId 可能尚未刷新，交给 sendInput 内部守卫
+    flushingRef.current = true;
+    const queue = [...state.pendingQueue];
+    dispatch({ type: 'CLEAR_PENDING' });
+    (async () => {
+      for (const text of queue) {
+        try {
+          await sendInputRef.current(text);
+        } catch (err) {
+          // 单条失败：把剩余消息放回队列，显示错误，停止 flush
+          console.error('[QUEUE] flush failed, requeuing remaining:', err);
+          for (const remaining of queue.slice(queue.indexOf(text) + 1)) {
+            dispatch({ type: 'QUEUE_INPUT', text: remaining });
+          }
+          dispatch({ type: 'ERROR', error: '重连后发送失败，部分消息已保留' });
+          break;
+        }
+      }
+      flushingRef.current = false;
+    })();
+  }, [status, state.pendingQueue]);
 
   const sendStop = useCallback(async (): Promise<void> => {
     if (state.stopping) return;
@@ -735,43 +816,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     dispatch({ type: 'SET_SELECTED_COMMAND', command });
   }, []);
 
-  const viewSession = useCallback(async (sessionId: string): Promise<void> => {
-    if (!sessionId || sessionId === 'new') {
-      if (!state.sessionId) {
-        dispatch({ type: 'VIEW_SESSION_HISTORY', sessionId: '', messages: [], lastSeq: 0, readOnly: false });
-      }
-      return;
-    }
-    const token = localStorage.getItem('mobilecoding.token');
-    const res = await fetch(`/api/v1/messages?session_id=${encodeURIComponent(sessionId)}&after_seq=0&limit=500`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      dispatch({ type: 'ERROR', error: `加载会话历史失败: ${res.statusText}` });
-      return;
-    }
-    const data = await res.json();
-    const rows = (data.messages || []) as Array<{ seq: number; content: string }>;
-    rows.sort((a, b) => a.seq - b.seq);
-    const messages: DisplayMessage[] = [];
-    let lastSeq = 0;
-    for (const row of rows) {
-      try {
-        messages.push(JSON.parse(row.content) as DisplayMessage);
-        if (row.seq > lastSeq) lastSeq = row.seq;
-      } catch {
-        // 忽略无法解析的历史行，避免单条坏数据阻塞整个会话查看。
-      }
-    }
-    dispatch({
-      type: 'VIEW_SESSION_HISTORY',
-      sessionId,
-      messages,
-      lastSeq,
-      readOnly: sessionId !== state.sessionId,
-    });
-  }, [state.sessionId]);
-
   const abortTurn = useCallback(async (): Promise<void> => {
     dispatch({ type: 'ABORT_TURN' });
     if (state.connectionMode === 'relay' && relayClientRef.current) {
@@ -794,6 +838,31 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
     }, [client, state.connectionMode]);
 
+  const allowToolThisSession = useCallback((toolName: string) => {
+    dispatch({ type: 'PERM_ALLOW_TOOL', toolName });
+  }, []);
+  const allowAllThisTurn = useCallback(() => {
+    dispatch({ type: 'PERM_ALLOW_ALL_TURN' });
+  }, []);
+  const clearPermAllowlist = useCallback(() => {
+    dispatch({ type: 'PERM_CLEAR_ALLOWLIST' });
+  }, []);
+
+  // 自动应答：收到权限请求时，若 toolName 在白名单或开启了"本轮全部允许"，
+  // 自动调 answerPermission(true)，避免逐个点按钮。
+  const answerPermRef = useRef(answerPermission);
+  useEffect(() => { answerPermRef.current = answerPermission; }, [answerPermission]);
+  useEffect(() => {
+    const prompt = state.permissionPrompt;
+    if (!prompt) return;
+    const autoAllow =
+      state.permAllowAllTurn || state.permAllowlist.includes(prompt.toolName);
+    if (!autoAllow) return;
+    const requestId = state.permissionRequestId || (prompt as { messageId?: string }).messageId || undefined;
+    // 异步应答，避免在 reducer/effect 同步路径中触发再次 dispatch 的竞争
+    void answerPermRef.current(true, prompt.toolName, requestId);
+  }, [state.permissionPrompt, state.permissionRequestId, state.permAllowlist, state.permAllowAllTurn]);
+
   const value: ChatContextValue = {
     state,
     ws: client,
@@ -802,9 +871,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
     sendStop,
     abortTurn,
     answerPermission,
+    allowToolThisSession,
+    allowAllThisTurn,
+    clearPermAllowlist,
     dismissPermission,
     setSelectedCommand,
-    viewSession,
     connectRelay,
     disconnectRelay,
   };

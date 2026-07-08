@@ -12,16 +12,19 @@ import (
 
 // SessionMeta 会话元数据，用于会话列表展示和恢复。
 type SessionMeta struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`         // 用户自定义名称或自动生成
-	Agent        string    `json:"agent"`        // claude/codex/opencode
-	Model        string    `json:"model"`        // 使用的模型
-	CWD          string    `json:"cwd"`          // 工作目录
-	Status       string    `json:"status"`       // active/inactive/archived
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	LastActiveAt time.Time `json:"lastActiveAt"` // 最后活跃时间
-	MessageCount int       `json:"messageCount"` // 消息数量
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`           // 用户自定义名称或自动生成
+	Agent          string    `json:"agent"`          // claude/codex/opencode
+	Model          string    `json:"model"`          // 使用的模型
+	CWD            string    `json:"cwd"`            // 工作目录
+	Status         string    `json:"status"`         // active/inactive/archived
+	ResumeSessionID string   `json:"resumeSessionId,omitempty"` // Claude 内部 session_id，用于 --resume 续聊
+	Command        string    `json:"command,omitempty"`         // 启动命令，用于恢复时重建 args
+	Args           []string  `json:"args,omitempty"`            // 启动参数，用于恢复时重建
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+	LastActiveAt   time.Time `json:"lastActiveAt"` // 最后活跃时间
+	MessageCount   int       `json:"messageCount"` // 消息数量
 }
 
 // Store 会话元数据持久化存储（基于 JSON 文件）。
@@ -143,57 +146,6 @@ func (s *Store) Update(id string, fn func(*SessionMeta)) error {
 
 	fn(meta)
 	meta.UpdatedAt = time.Now()
-	return s.save()
-}
-
-// Get 获取单个会话元数据。
-func (s *Store) Get(id string) (*SessionMeta, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	meta, exists := s.sessions[id]
-	if !exists {
-		return nil, fmt.Errorf("session %s not found", id)
-	}
-
-	// 返回副本，避免外部修改
-	copied := *meta
-	return &copied, nil
-}
-
-// List 返回所有会话元数据列表（按最后活跃时间降序）。
-func (s *Store) List() []*SessionMeta {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	list := make([]*SessionMeta, 0, len(s.sessions))
-	for _, meta := range s.sessions {
-		copied := *meta
-		list = append(list, &copied)
-	}
-
-	// 按最后活跃时间降序排序
-	for i := 0; i < len(list); i++ {
-		for j := i + 1; j < len(list); j++ {
-			if list[i].LastActiveAt.Before(list[j].LastActiveAt) {
-				list[i], list[j] = list[j], list[i]
-			}
-		}
-	}
-
-	return list
-}
-
-// Delete 删除会话元数据。
-func (s *Store) Delete(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, exists := s.sessions[id]; !exists {
-		return fmt.Errorf("session %s not found", id)
-	}
-
-	delete(s.sessions, id)
 	return s.save()
 }
 

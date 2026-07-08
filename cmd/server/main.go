@@ -252,7 +252,7 @@ func run(cfg config.Config, logger *logx.Logger, tlsCfg *tls.Config, ca *auth.CA
 	hookRegistry := hook.NewRegistry()
 	hookHandler := hook.NewHandler(hookRegistry, func(ev hook.Event) {
 		// 把权限请求包装成 projection.Event 通过 hub 广播给 WS 客户端
-		pe := projection.PermissionAskEventWithID(ev.SessionID, ev.RequestID, ev.ToolName, ev.ToolInputPrompt)
+		pe := projection.PermissionAskEventWithID(ev.SessionID, ev.RequestID, ev.ToolName, ev.ToolInputPrompt, ev.ToolInput)
 		env, err := ws.ProjectionToEnvelope(pe)
 		if err != nil {
 			logger.Error("hook", "wrap event failed: %v", err)

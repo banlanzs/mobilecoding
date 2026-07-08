@@ -44,6 +44,13 @@ type ResumeSessionIDProvider interface {
 	GetResumeSessionID() string
 }
 
+// ResumeIDCallbackSetter 支持设置 resume ID 变更回调。
+// Manager 通过类型断言注入回调，在 runner 捕获到新 session_id 时持久化，
+// 避免 Runner 接口本身依赖持久化逻辑。
+type ResumeIDCallbackSetter interface {
+	SetResumeIDCallback(cb func(sid string))
+}
+
 type Runner interface {
 	Start(ctx context.Context, req ExecRequest) error
 	Write(p []byte) error

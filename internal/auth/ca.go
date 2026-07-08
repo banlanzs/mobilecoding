@@ -21,15 +21,41 @@ type CA struct {
 	PrivateKey  *rsa.PrivateKey
 }
 
-// LoadOrCreateCA 加载 path 处的 CA 证书；若不存在则新建 RSA-2048 CA（10 年）。
+// LoadOrCreateCA 加载 path 处的 CA 证书和配套私钥；若任一不存在则新建 RSA-2048 CA（10 年）。
+// 私钥保存在 path 同目录的 ca.key（去掉原扩展名加 .key）。
 // 父目录权限 0o700，文件权限 0o600。
 func LoadOrCreateCA(path string) (*CA, error) {
-	if raw, err := os.ReadFile(path); err == nil {
-		return parseCAPEM(raw)
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read ca: %w", err)
+	keyPath := caKeyPath(path)
+	certRaw, certErr := os.ReadFile(path)
+	keyRaw, keyErr := os.ReadFile(keyPath)
+	if certErr == nil && keyErr == nil {
+		// 证书和私钥都存在，加载两者
+		ca, err := parseCAPEM(certRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse ca cert: %w", err)
+		}
+		key, err := parseRSAPrivateKeyPEM(keyRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse ca key: %w", err)
+		}
+		ca.PrivateKey = key
+		return ca, nil
+	}
+	// 任一文件缺失（含旧版残留：有 ca.crt 无 ca.key）→ 重新生成 CA
+	// 用原始读错误报告非"不存在"的故障
+	if certErr != nil && !os.IsNotExist(certErr) {
+		return nil, fmt.Errorf("read ca: %w", certErr)
+	}
+	if keyErr != nil && !os.IsNotExist(keyErr) {
+		return nil, fmt.Errorf("read ca key: %w", keyErr)
 	}
 	return generateAndSaveCA(path)
+}
+
+// caKeyPath 由 ca.crt 路径推导 ca.key 路径（替换扩展名）。
+func caKeyPath(caPath string) string {
+	ext := filepath.Ext(caPath)
+	return caPath[:len(caPath)-len(ext)] + ".key"
 }
 
 func generateAndSaveCA(path string) (*CA, error) {
@@ -72,6 +98,18 @@ func generateAndSaveCA(path string) (*CA, error) {
 	}
 	_ = os.Chmod(path, 0o600)
 
+	// 私钥落盘，供重启后加载（修复私钥只在内存、进程重启后无法签发证书的问题）
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ca key: %w", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	keyPath := caKeyPath(path)
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		return nil, fmt.Errorf("write ca key: %w", err)
+	}
+	_ = os.Chmod(keyPath, 0o600)
+
 	return &CA{Certificate: cert, PrivateKey: key}, nil
 }
 
@@ -88,6 +126,32 @@ func parseCAPEM(raw []byte) (*CA, error) {
 		return nil, errors.New("ca: cert is not a CA")
 	}
 	return &CA{Certificate: cert, PrivateKey: nil}, nil
+}
+
+// parseRSAPrivateKeyPEM 解析 PEM 编码的 RSA 私钥（PKCS8 或 PKCS1）。
+func parseRSAPrivateKeyPEM(raw []byte) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("ca key: invalid PEM block")
+	}
+	var key any
+	var err error
+	switch block.Type {
+	case "PRIVATE KEY":
+		key, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	case "RSA PRIVATE KEY":
+		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	default:
+		return nil, fmt.Errorf("ca key: unexpected PEM type %q", block.Type)
+	}
+	if err != nil {
+		return nil, err
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("ca key: not an RSA private key")
+	}
+	return rsaKey, nil
 }
 
 // SignServerCSR 用 CA 私钥签发 server 证书（含 SAN: ip, dns, 127.0.0.1, localhost）。

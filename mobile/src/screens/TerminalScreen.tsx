@@ -1,9 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert, Pressable, StatusBar, Modal, ActivityIndicator, ScrollView } from 'react-native'
+import React, { useState, useEffect, useRef } from 'react'
+import { SafeAreaView, View, TextInput, Button, Text, FlatList, KeyboardAvoidingView, Platform, BackHandler, Alert, Pressable, StatusBar, Modal, ActivityIndicator } from 'react-native'
 import { Picker } from '@react-native-picker/picker'
 import { createMessageStore } from '../stores/useMessageStore'
-import { MessageCard } from '../components/terminal/MessageCard'
+import { MessageList } from '../components/terminal/MessageList'
 import { GitDiffModal } from '../components/terminal/GitDiffModal'
+
+/** 格式化上下文用量文案，无数据返回 null */
+function formatContextUsage(cw: { used?: number; total?: number; raw?: unknown } | null): string | null {
+  if (!cw) return null
+  if (cw.used != null && cw.total != null) {
+    return `Context: ${Math.round(cw.used / 1000)}k / ${Math.round(cw.total / 1000)}k`
+  }
+  if (cw.used != null) {
+    return `Context: ${Math.round(cw.used / 1000)}k`
+  }
+  return null
+}
 
 class MockWSClient {
   private statusListeners = new Set<(status: 'idle' | 'connecting' | 'connected' | 'closed') => void>()
@@ -220,6 +232,8 @@ export function TerminalScreen(props?: any) {
   const [loadingModels, setLoadingModels] = useState(false)
   const [runtimeArgs, setRuntimeArgs] = useState<string[]>([])
   const [settingsPath, setSettingsPath] = useState<string>('')
+  const [projectCwd, setProjectCwd] = useState<string>('')
+  const [contextWindow, setContextWindow] = useState<{ used?: number; total?: number; raw?: unknown } | null>(null)
 
   const host = routeParams.host || '10.0.2.2'
   const port = routeParams.port || '8445'
@@ -237,6 +251,7 @@ export function TerminalScreen(props?: any) {
       setTurnActive(state.turnActive)
       setThinking(state.thinking)
       setPermissionPrompt(state.permissionPrompt)
+      setContextWindow(state.contextWindow)
     })
 
     // 禁用返回手势，防止误触回到 Onboarding
@@ -347,16 +362,20 @@ export function TerminalScreen(props?: any) {
           setSettingsPath(path)
           console.log('[Terminal] settings path:', path)
         }
+        // 提取工作目录作为项目名
+        if (data.runtime.cwd) {
+          setProjectCwd(data.runtime.cwd)
+        }
       })
       .catch(err => console.warn('[Terminal] version fetch failed:', err?.message))
 
-    // 2. 获取历史消息
-    const sessionsUrl = `${baseUrl}/api/v1/sessions`
-    console.log('[Terminal] fetching sessions for history')
-    fetch(sessionsUrl, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error(`sessions HTTP ${res.status}`)))
-      .then((sessions: Array<{ id: string }>) => {
-        const activeSessionId = sessions?.[0]?.id
+    // 2. 获取历史消息（通过 /api/v1/session-id 取活跃会话 ID）
+    const sessionIdUrl = `${baseUrl}/api/v1/session-id`
+    console.log('[Terminal] fetching active session id')
+    fetch(sessionIdUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`session-id HTTP ${res.status}`)))
+      .then((data: { sessionId?: string }) => {
+        const activeSessionId = data?.sessionId
         if (!activeSessionId) {
           console.log('[Terminal] no active session found')
           return
@@ -498,6 +517,10 @@ export function TerminalScreen(props?: any) {
 
   const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0
 
+  // 派生：项目名（cwd 的 basename）、上下文用量文案
+  const projectName = projectCwd ? projectCwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || projectCwd : ''
+  const contextUsage = formatContextUsage(contextWindow)
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#ededed', paddingTop: statusBarHeight }}>
       <KeyboardAvoidingView
@@ -506,35 +529,46 @@ export function TerminalScreen(props?: any) {
         keyboardVerticalOffset={0}
       >
         {/* 顶栏 */}
-        <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude</Text>
-            {/* Git Diff 按钮 */}
-            <Pressable
-              onPress={() => setShowGitDiff(true)}
-              style={({ pressed }) => ({
-                padding: 6,
-                borderRadius: 8,
-                backgroundColor: pressed ? '#d0d0d0' : '#f0f0f0',
-              })}
-            >
-              <Text style={{ fontSize: 16 }}>📁</Text>
-            </Pressable>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#ededed', borderBottomWidth: 1, borderBottomColor: '#d9d9d9' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+              <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Claude Code</Text>
+              {projectName ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 }}>
+                  <Text style={{ fontSize: 13, color: '#888' }}>📂</Text>
+                  <Text style={{ fontSize: 13, color: '#666' }} numberOfLines={1}>{projectName}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {initialModel ? (
+                <Text style={{ fontSize: 11, color: '#999' }} numberOfLines={1}>{initialModel}</Text>
+              ) : null}
+              {/* Git Diff 按钮 */}
+              <Pressable
+                onPress={() => setShowGitDiff(true)}
+                style={({ pressed }) => ({
+                  padding: 6,
+                  borderRadius: 8,
+                  backgroundColor: pressed ? '#d0d0d0' : '#f0f0f0',
+                })}
+              >
+                <Text style={{ fontSize: 16 }}>📁</Text>
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
+                <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
+              </View>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? '#34c759' : '#f44336' }} />
-            <Text style={{ fontSize: 12, color: '#666' }}>{connected ? '已连接' : '未连接'}</Text>
-          </View>
+          {/* 上下文用量（有数据时显示） */}
+          {contextUsage ? (
+            <Text style={{ fontSize: 11, color: '#999', marginTop: 4 }}>{contextUsage}</Text>
+          ) : null}
         </View>
 
         {/* 消息列表 */}
-        <FlatList
-          data={messages}
-          keyExtractor={(_, idx) => String(idx)}
-          renderItem={({ item }) => <MessageCard message={item} />}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingVertical: 8 }}
-        />
+        <MessageList messages={messages} />
 
         {/* 斜杠命令下拉 */}
         {showSlashPicker && filteredCommands.length > 0 && (
@@ -612,18 +646,40 @@ export function TerminalScreen(props?: any) {
         )}
 
         {/* 输入栏 */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#d9d9d9', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: '#f7f7f7', borderTopWidth: 1, borderTopColor: '#d9d9d9', flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <TextInput
             value={input}
             onChangeText={handleInputChange}
             placeholder={connected ? '输入消息，/ 打开命令...' : '连接中...'}
+            placeholderTextColor="#bbb"
             editable={connected}
-            style={{ flex: 1, backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 12, height: 42, color: '#000' }}
+            multiline
+            style={{ flex: 1, backgroundColor: '#fff', borderRadius: 21, borderWidth: 1, borderColor: '#d9d9d9', paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100, color: '#000', fontSize: 15 }}
           />
           {turnActive ? (
-            <Button title="停止" onPress={handleAbort} color="#f44336" />
+            <Pressable
+              onPress={handleAbort}
+              hitSlop={8}
+              style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#f44336', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>停止</Text>
+            </Pressable>
           ) : (
-            <Button title="发送" onPress={handleSend} disabled={!connected || !input.trim()} color="#2e7d32" />
+            <Pressable
+              onPress={handleSend}
+              disabled={!connected || !input.trim()}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: !connected || !input.trim() ? '#ccc' : (pressed ? '#256029' : '#2e7d32'),
+                alignItems: 'center',
+                justifyContent: 'center',
+              })}
+            >
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: '600' }}>➜</Text>
+            </Pressable>
           )}
         </View>
       </KeyboardAvoidingView>

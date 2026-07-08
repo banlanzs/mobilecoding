@@ -43,12 +43,38 @@
   flex-shrink: 0;
   min-height: 28px;
   z-index: 10;
+  position: relative;
 }
 
 .connection-status {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.pending-badge {
+  margin-left: 4px;
+  padding: 1px 7px;
+  background: var(--mc-warn);
+  color: var(--mc-bg);
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.offline-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  padding: 5px 12px;
+  background: color-mix(in oklab, var(--mc-warn) 18%, var(--mc-surface-2));
+  border-bottom: 1px solid var(--mc-border);
+  color: var(--mc-warn);
+  font-size: 11px;
+  text-align: center;
+  z-index: 9;
 }
 
 .status-dot {
@@ -165,6 +191,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-meta-clickable {
+  cursor: pointer;
+  transition: color var(--mc-motion);
+}
+.agent-meta-clickable:hover {
+  color: var(--mc-accent);
 }
 
 .agent-state {
@@ -374,7 +408,7 @@
 }
 
 .session-bar-active .session-actions {
-  margin-left: 0;
+  margin-left: auto;
 }
 
 .session-bar-active .btn {
@@ -469,6 +503,11 @@
   background: color-mix(in oklab, var(--mc-danger) 22%, transparent);
 }
 
+/* Stop 按钮隔离：独立圆角 + 左侧间距分隔，避免和高频按钮混排误触 */
+.btn-stop-isolated {
+  margin-left: 4px;
+}
+
 /* 双重确认停止按钮状态 */
 .btn-confirm-stop {
   background: var(--mc-danger);
@@ -531,12 +570,15 @@
 
 /* ─── 消息卡片通用 ──────────────────────────────────────────────────── */
 .card {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--mc-border-soft);
+  padding: 10px 14px;
+  margin: 6px 10px;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-md);
 }
 
 .card:last-child {
-  border-bottom: none;
+  margin-bottom: 10px;
 }
 
 .card-header {
@@ -654,12 +696,49 @@
 }
 
 /* 代码块 */
-.markdown-body pre {
+.markdown-body .code-block {
   margin: 8px 0;
-  padding: 12px 14px;
-  background: var(--mc-surface-2);
   border: 1px solid var(--mc-border);
   border-radius: var(--mc-radius-sm);
+  overflow: hidden;
+  background: var(--mc-surface-2);
+}
+.markdown-body .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: color-mix(in oklab, var(--mc-surface) 60%, var(--mc-surface-2));
+  border-bottom: 1px solid var(--mc-border);
+  font-family: var(--mc-font-mono);
+  font-size: 11px;
+}
+.markdown-body .code-lang {
+  color: var(--mc-meta);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.markdown-body .btn-copy-code {
+  background: none;
+  border: 1px solid var(--mc-border);
+  border-radius: 4px;
+  color: var(--mc-muted);
+  cursor: pointer;
+  font-family: var(--mc-font-mono);
+  font-size: 11px;
+  padding: 1px 8px;
+  transition: background var(--mc-motion), color var(--mc-motion);
+}
+.markdown-body .btn-copy-code:hover {
+  background: var(--mc-surface);
+  color: var(--mc-fg-2);
+}
+.markdown-body .code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  border-radius: 0;
   overflow-x: auto;
   font-size: 12px;
   line-height: 1.6;
@@ -774,14 +853,23 @@
 
 /* ─── 用户消息 ──────────────────────────────────────────────────────── */
 .card-user {
-  background: color-mix(in oklab, var(--mc-accent) 7%, transparent);
+  margin-left: 15%;
+  background: var(--mc-purple-soft);
+  border-color: var(--mc-purple-border);
 }
 
 .card-user .card-badge {
-  background: color-mix(in oklab, var(--mc-success) 16%, transparent);
-  color: var(--mc-success);
+  background: var(--mc-purple);
+  color: var(--mc-bg);
 }
 
+/* 用户消息右对齐：header 内容右靠，badge 顺序反转 */
+.card-user .card-header {
+  justify-content: flex-end;
+}
+.card-user .card-header .card-badge {
+  order: 2;
+}
 .card-user pre {
   margin: 4px 0;
   white-space: pre-wrap;
@@ -789,6 +877,12 @@
   font-family: var(--mc-font-body);
   font-size: 13.5px;
   color: var(--mc-fg);
+  text-align: right;
+}
+
+/* 助手消息左对齐，留出右侧空间与用户气泡对称 */
+.card-text {
+  margin-right: 15%;
 }
 
 /* ─── 工具使用卡片 ──────────────────────────────────────────────────── */
@@ -888,9 +982,36 @@
 .diff-add .diff-prefix { color: var(--mc-success); }
 .diff-del { background: color-mix(in oklab, var(--mc-danger) 12%, transparent); }
 .diff-del .diff-prefix { color: var(--mc-danger); }
-.diff-same { background: transparent; }
-.diff-same .diff-prefix { color: var(--mc-meta); }
+.diff-context, .diff-same { background: transparent; }
+.diff-context .diff-prefix, .diff-same .diff-prefix { color: var(--mc-meta); }
+.diff-hunk {
+  background: color-mix(in oklab, var(--mc-accent) 10%, transparent);
+  color: var(--mc-accent);
+  border-top: 1px solid var(--mc-border);
+  border-bottom: 1px solid var(--mc-border);
+  margin: 4px 0;
+  font-weight: 600;
+}
+.diff-hunk .diff-prefix { color: var(--mc-accent); }
+.diff-meta {
+  color: var(--mc-meta);
+  font-size: 10px;
+  padding: 2px 8px;
+}
 .diff-prefix { display: inline-block; width: 16px; user-select: none; }
+.diff-truncated {
+  padding: 6px 8px;
+  color: var(--mc-meta);
+  font-size: 11px;
+  text-align: center;
+  border-top: 1px solid var(--mc-border);
+}
+.diff-empty {
+  padding: 12px 8px;
+  color: var(--mc-meta);
+  text-align: center;
+  font-size: 12px;
+}
 
 /* ─── 权限状态行（内联，无交互按钮）───────────────────────────────────── */
 .card-permission-status {
@@ -1182,7 +1303,7 @@
   gap: 8px;
   overflow-x: auto;
   white-space: nowrap;
-  padding-bottom: 2px;
+  padding: 0 2px 6px;
   scrollbar-width: none;
 }
 
@@ -1196,7 +1317,8 @@
   color: var(--mc-fg-2);
   font-family: var(--mc-font-mono);
   font-size: 12px;
-  padding: 4px 10px;
+  min-height: 32px;
+  padding: 6px 14px;
   border-radius: 99px;
   cursor: pointer;
   white-space: nowrap;
@@ -1392,6 +1514,71 @@
   color: #ffffff;
   font-weight: 700;
   box-shadow: 0 4px 12px color-mix(in oklab, var(--mc-success) 30%, transparent);
+}
+
+/* 详情展开 */
+.permission-banner-detail-toggle {
+  background: none;
+  border: none;
+  color: var(--mc-accent);
+  font-size: 12px;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.permission-banner-detail-toggle:hover {
+  text-decoration: underline;
+}
+.permission-banner-detail {
+  margin: 4px 0;
+  padding: 8px 10px;
+  background: var(--mc-surface-2);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  font-family: var(--mc-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--mc-fg-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* 次级操作：会话级允许 / 本轮全部允许 */
+.permission-banner-secondary {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.permission-banner-secondary .btn-secondary {
+  flex: 1;
+  height: 36px;
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  background: var(--mc-surface-2);
+  color: var(--mc-fg-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--mc-motion), color var(--mc-motion);
+}
+.permission-banner-secondary .btn-secondary:hover {
+  background: var(--mc-surface);
+  color: var(--mc-fg);
+}
+.permission-banner-secondary .btn-secondary:active {
+  transform: scale(0.98);
+}
+
+/* 自动允许提示 */
+.permission-banner-auto {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--mc-radius-sm);
+  background: color-mix(in oklab, var(--mc-success) 14%, transparent);
+  color: var(--mc-success);
+  font-size: 12px;
+  text-align: center;
 }
 
 /* 权限卡片内的 allow/deny（备用，card-permission 用）*/

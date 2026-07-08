@@ -104,16 +104,14 @@ func NewRouter(deps Dependencies, authToken string) http.Handler {
 		r.Get("/search", searchHandler(deps.MsgStore))
 		r.Post("/resume", resumeHandler(deps.Session, deps.WS))
 
-		// 会话管理 API
-		r.Get("/sessions", sessionsListHandler(deps.Session))
-		r.Post("/sessions", sessionsCreateHandler(deps.Session))
-		r.Get("/sessions/{id}", sessionsGetHandler(deps.Session))
-		r.Delete("/sessions/{id}", sessionsDeleteHandler(deps.Session))
-
 		// Git 文件变更 API
 		r.Get("/git/status", gitStatusHandler())
 		r.Get("/git/diff", gitDiffHandler())
 		r.Get("/git/diff-summary", gitDiffSummaryHandler())
+
+		// 文件浏览 API
+		r.Get("/files/tree", filesTreeHandler())
+		r.Get("/files/read", filesReadHandler())
 	})
 
 	// Claude Code HTTP hook 端点已移至独立 HTTP 监听器（startHookListener），
@@ -289,22 +287,26 @@ func readSettingsModels(path string) string {
 	}
 	// 从 env 中提取所有 ANTHROPIC_*_MODEL
 	if env, ok := m["env"].(map[string]any); ok {
-		modelKeys := []struct{ key, label string }{
-			{"ANTHROPIC_DEFAULT_HAIKU_MODEL", "Haiku"},
-			{"ANTHROPIC_DEFAULT_SONNET_MODEL", "Sonnet"},
-			{"ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus"},
-			{"ANTHROPIC_MODEL", "默认"},
+		// 顺序即下拉顺序。label 用实际模型名（value），便于用户辨认真实模型；
+		// 不再用固定的 Haiku/Sonnet/Opus 档位名（易与真实模型名脱节）。
+		modelKeys := []string{
+			"ANTHROPIC_MODEL",
+			"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+			"ANTHROPIC_DEFAULT_SONNET_MODEL",
+			"ANTHROPIC_DEFAULT_OPUS_MODEL",
 		}
 		var parts []string
 		seen := map[string]bool{}
-		for _, mk := range modelKeys {
-			if v, ok := env[mk.key].(string); ok && v != "" && !seen[v] {
-				seen[v] = true
-				parts = append(parts, mk.label+":"+v)
+		for _, key := range modelKeys {
+			v, ok := env[key].(string)
+			if !ok || v == "" || seen[v] {
+				continue
 			}
+			seen[v] = true
+			parts = append(parts, v+":"+v)
 		}
 		if len(parts) > 0 {
-			// 确保 "默认模型" (空值) 在最前面
+			// "默认模型"（空 value）置顶，允许用户用 claude 内置默认
 			return "默认模型:," + strings.Join(parts, ",")
 		}
 	}

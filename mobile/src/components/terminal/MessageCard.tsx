@@ -1,28 +1,36 @@
 import React, { useState } from 'react'
 import { View, Text, Pressable } from 'react-native'
 import type { DisplayMessage } from '../../stores/useMessageStore'
+import { toolTone } from './toolTone'
 
-interface MessageCardProps {
+export interface MessageCardProps {
   message: DisplayMessage
 }
 
-/** 工具/命令类消息：默认折叠，点击展开 */
-function ToolCard({ icon, label, detail, children }: {
+/** 工具/命令类卡片：默认折叠，点击展开。颜色按 error/success/默认分级。 */
+export function ToolBlock({ icon, label, detail, children, tone }: {
   icon: string
   label: string
   detail?: string
   children?: React.ReactNode
+  tone?: { bg: string; border: string; icon: string }
 }) {
   const [expanded, setExpanded] = useState(false)
+  const bg = tone?.bg ?? '#f5f5f5'
+  const border = tone?.border ?? '#e5e5e5'
+  const displayIcon = tone?.icon ?? icon
   return (
-    <View style={{ paddingHorizontal: 12, paddingVertical: 2 }}>
-      <Pressable onPress={() => setExpanded(!expanded)} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}>
-        <Text style={{ fontSize: 12 }}>{icon}</Text>
-        <Text style={{ fontSize: 12, color: '#666' }}>{label}</Text>
-        {detail ? <Text style={{ fontSize: 11, color: '#999', maxWidth: 200 }} numberOfLines={1}>{detail}</Text> : null}
-        <Text style={{ fontSize: 10, color: '#aaa' }}>{expanded ? '▲' : '▼'}</Text>
+    <View style={{ paddingVertical: 2 }}>
+      <Pressable
+        onPress={() => setExpanded(!expanded)}
+        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}
+      >
+        <Text style={{ fontSize: 12 }}>{displayIcon}</Text>
+        <Text style={{ fontSize: 12, color: '#444', fontWeight: '500' }}>{label}</Text>
+        {detail ? <Text style={{ fontSize: 11, color: '#888', maxWidth: 200 }} numberOfLines={1}>{detail}</Text> : null}
+        {children ? <Text style={{ fontSize: 10, color: '#aaa' }}>{expanded ? '▲' : '▼'}</Text> : null}
       </Pressable>
-      {expanded && (
+      {expanded && children && (
         <View style={{ marginTop: 4, marginLeft: 10, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#e5e5e5', padding: 10, maxHeight: 300 }}>
           {children}
         </View>
@@ -59,34 +67,36 @@ export function MessageCard({ message }: MessageCardProps) {
   // ─── 工具调用（合并 tool_use/tool_start） ───
   if (message.type === 'tool_use' || message.type === 'tool_start') {
     const m = message as any
-    const inputStr = m.toolInput ? JSON.stringify(m.toolInput) : ''
+    const inputStr = m.toolInput ? (typeof m.toolInput === 'string' ? m.toolInput : JSON.stringify(m.toolInput)) : ''
     return (
-      <ToolCard icon="🔧" label={m.toolName || '工具'} detail={inputStr.substring(0, 50)}>
+      <ToolBlock icon="🔧" label={m.toolName || '工具'} detail={inputStr.substring(0, 50)} tone={toolTone(m)}>
         {m.toolInput && (
-          <Text selectable style={{ fontSize: 12, color: '#333', fontFamily: 'monospace' }}>{JSON.stringify(m.toolInput, null, 2)}</Text>
+          <Text selectable style={{ fontSize: 12, color: '#333', fontFamily: 'monospace' }}>
+            {typeof m.toolInput === 'string' ? m.toolInput : JSON.stringify(m.toolInput, null, 2)}
+          </Text>
         )}
-      </ToolCard>
+      </ToolBlock>
     )
   }
 
   // ─── 工具结果/输出（合并，不重复显示） ───
   if (message.type === 'tool_result' || message.type === 'tool_output' || message.type === 'tool_end') {
     const m = message as any
-    const content = m.toolOutput || (m.toolResult ? JSON.stringify(m.toolResult) : '')
+    const content = m.toolOutput || (m.toolResult ? (typeof m.toolResult === 'string' ? m.toolResult : JSON.stringify(m.toolResult)) : '')
     if (!content) return null
     return (
-      <ToolCard icon="📋" label={m.toolName || '结果'} detail={content.substring(0, 50)}>
+      <ToolBlock icon="📋" label={m.toolName || '结果'} detail={content.substring(0, 50)} tone={toolTone(m)}>
         <Text selectable style={{ fontSize: 12, color: '#333', fontFamily: 'monospace' }}>{content}</Text>
-      </ToolCard>
+      </ToolBlock>
     )
   }
 
   // ─── 命令执行（合并 bash 系列） ───
   if (message.type === 'bash_start') {
     return (
-      <ToolCard icon="💻" label="命令" detail={(message as any).toolInput?.substring(0, 50)}>
+      <ToolBlock icon="💻" label="Bash" detail={(message as any).toolInput?.substring(0, 50)} tone={toolTone(message)}>
         <Text selectable style={{ fontFamily: 'monospace', fontSize: 12, color: '#000' }}>$ {(message as any).toolInput}</Text>
-      </ToolCard>
+      </ToolBlock>
     )
   }
 
@@ -94,9 +104,9 @@ export function MessageCard({ message }: MessageCardProps) {
     const content = (message as any).toolOutput
     if (!content) return null
     return (
-      <ToolCard icon="📤" label="输出" detail={content.substring(0, 50)}>
+      <ToolBlock icon="📤" label="输出" detail={content.substring(0, 50)} tone={toolTone(message)}>
         <Text selectable style={{ fontFamily: 'monospace', fontSize: 12, color: '#333' }}>{content}</Text>
-      </ToolCard>
+      </ToolBlock>
     )
   }
 
@@ -119,12 +129,12 @@ export function MessageCard({ message }: MessageCardProps) {
 
   // ─── 其他事件：折叠 ───
   return (
-    <ToolCard icon="📌" label={message.type} />
+    <ToolBlock icon="📌" label={message.type} />
   )
 }
 
 /** 思考内容：默认折叠，点击展开，有最大高度限制 */
-function ThinkingBlock({ text }: { text: string }) {
+export function ThinkingBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
   if (!text || text.trim().length === 0) return null
   return (

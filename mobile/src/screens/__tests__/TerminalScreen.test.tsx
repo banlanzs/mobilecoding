@@ -6,7 +6,7 @@ describe('TerminalScreen', () => {
   it('渲染纯聊天界面，不显示连接参数配置', () => {
     const screen = render(<TerminalScreen />)
 
-    expect(screen.getByText('Claude')).toBeTruthy()
+    expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.queryByPlaceholderText('Host (10.0.2.2 / 局域网IP)')).toBeNull()
     expect(screen.queryByPlaceholderText('Port (8443)')).toBeNull()
     expect(screen.queryByPlaceholderText('Token（从服务器日志复制）')).toBeNull()

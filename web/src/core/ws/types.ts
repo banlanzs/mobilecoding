@@ -119,12 +119,16 @@ export interface PermissionRequestEvent extends BaseEvent {
   type: typeof EVT_PERMISSION_REQ;
   toolName: string;
   message: string;
+  toolInput?: unknown;      // 原始工具输入（hook 路径透传，可展开查看详情）
+  requestId?: string;       // hook 路径的权限请求 ID（存于 messageId）
 }
 
 export interface PermissionAskEvent extends BaseEvent {
   type: typeof EVT_PERMISSION_ASK;
   toolName: string;
   message: string;
+  toolInput?: unknown;
+  requestId?: string;
 }
 
 export interface TurnEndEvent extends BaseEvent {
@@ -243,6 +247,7 @@ export interface SessionStartParams {
   args?: string[];
   cwd?: string;
   restart?: boolean;
+  resumeSessionId?: string; // Claude 内部 session_id，用于恢复历史会话
 }
 
 export interface SessionStartResult {
@@ -251,25 +256,6 @@ export interface SessionStartResult {
 
 export interface SessionInputParams {
   text: string;
-}
-
-export interface SessionListParams {}
-
-export interface SessionListResult {
-  sessions: SessionMeta[];
-}
-
-export interface SessionMeta {
-  id: string;
-  name: string;
-  agent: string;
-  model?: string;
-  cwd?: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  lastActiveAt: string;
-  messageCount: number;
 }
 
 export interface RPCError {
