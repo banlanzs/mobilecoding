@@ -145,6 +145,7 @@ jobs:
           VERSION_CODE: ${{ steps.ver.outputs.code }}
         run: |
           cd mobile/android
+          chmod +x gradlew
           ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
           mv app/build/outputs/apk/release/app-release.apk \
              ${{ github.workspace }}/mobilecoding-android-arm64-v8a.apk
