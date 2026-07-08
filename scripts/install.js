@@ -124,12 +124,11 @@ async function resolveVersion() {
     console.log(`[mobilecoding] Latest GitHub release: ${tag}`);
     return tag;
   } catch (err) {
-    const pkgVersion = require(path.join(__dirname, '..', 'package.json')).version;
-    console.warn(
-      `[mobilecoding] Failed to fetch latest release (${err.message}), ` +
-        `falling back to package.json version v${pkgVersion}`
-    );
-    return `v${pkgVersion}`;
+    // GitHub API 失败（如 ratelimit）时不回退 package.json 版本——
+    // npm 版本与 GitHub release 不一定同步，回退可能指向不存在的 release（404）。
+    // 返回 null，由主流程提示用户手动下载 latest release。
+    console.warn(`[mobilecoding] Failed to fetch latest release (${err.message}).`);
+    return null;
   }
 }
 
@@ -147,6 +146,17 @@ function normalizeTag(v) {
     version = await resolveVersion();
   } catch (err) {
     console.error(`[mobilecoding] Failed to resolve version: ${err.message}`);
+    return;
+  }
+
+  // GitHub API 失败时 version 为 null：无法确定要下载哪个 release，提示手动下载
+  if (!version) {
+    console.error('[mobilecoding] Could not determine the latest release version automatically.');
+    console.error('[mobilecoding] Please download the binary for your platform manually from:');
+    console.error(`[mobilecoding]   https://github.com/${REPO}/releases/latest`);
+    console.error(`[mobilecoding]   Place it at: ${binaryPath}`);
+    console.error('[mobilecoding] Or set MOBILECODING_VERSION=<tag> to pin a specific release.');
+    // 不阻止安装 - 用户可以手动下载
     return;
   }
 
