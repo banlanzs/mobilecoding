@@ -39,6 +39,7 @@ coverage.out
 .gemini/
 .workflow/
 .ccg/
+.codex/
 .worktrees/
 
 #resources

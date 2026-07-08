@@ -10,6 +10,13 @@ export interface UserMessage {
 
 export type DisplayMessage = AppEvent | UserMessage
 
+/** 上下文窗口用量（由 context_window 事件解析，不进入 messages 列表） */
+export interface ContextWindowInfo {
+  used?: number
+  total?: number
+  raw?: unknown
+}
+
 interface MessageState {
   messages: DisplayMessage[]
   permissionPrompt: PermissionRequestEvent | null
@@ -17,6 +24,7 @@ interface MessageState {
   thinking: boolean
   turnActive: boolean
   lastSeq: number
+  contextWindow: ContextWindowInfo | null
   handleEvent: (event: any, sessionId?: string) => void
   addUserMessage: (text: string, sessionId: string) => void
   clearPermission: () => void
@@ -32,6 +40,7 @@ export function createMessageStore() {
     thinking: false,
     turnActive: false,
     lastSeq: 0,
+    contextWindow: null,
     handleEvent: (event: any, sessionId?: string) => {
       const state = get()
 
@@ -46,8 +55,15 @@ export function createMessageStore() {
         return
       }
 
+      // context_window：解析用量存入独立状态字段，不进入 messages 列表
+      if (event.type === 'context_window') {
+        const info = parseContextWindow(event.toolInput)
+        set({ contextWindow: info })
+        return
+      }
+
       // 隐藏事件：直接忽略
-      if (event.type === 'context_window' || event.type === 'plan_mode' || event.type === 'session') {
+      if (event.type === 'plan_mode' || event.type === 'session') {
         return
       }
 
@@ -102,6 +118,28 @@ export function createMessageStore() {
       // UI 层调用此方法后，再发送 permission.respond 到服务器
       set({ permissionPrompt: null, permissionRequestId: null })
     },
-    resetMessages: () => set({ messages: [], permissionPrompt: null, permissionRequestId: null, thinking: false, turnActive: false, lastSeq: 0 })
+    resetMessages: () => set({ messages: [], permissionPrompt: null, permissionRequestId: null, thinking: false, turnActive: false, lastSeq: 0, contextWindow: null })
   }))
+}
+
+/**
+ * 解析 context_window 事件 payload 为用量信息。
+ * Claude hook 的 payload 字段名不统一，容错解析多种可能的结构。
+ * 解析失败返回 null（UI 不显示，不崩溃）。
+ */
+function parseContextWindow(data: unknown): ContextWindowInfo | null {
+  if (!data || typeof data !== 'object') return null
+  const obj = data as Record<string, any>
+  // 常见字段名兜底
+  const used = obj.used_tokens ?? obj.usedTokens ?? obj.tokens_used ?? obj.used ?? obj.context_used
+  const total = obj.total_tokens ?? obj.totalTokens ?? obj.tokens_total ?? obj.total ?? obj.context_total
+  if (used == null && total == null) {
+    // 没有可识别字段，保留原始数据供调试
+    return { raw: data }
+  }
+  return {
+    used: typeof used === 'number' ? used : Number(used) || undefined,
+    total: typeof total === 'number' ? total : Number(total) || undefined,
+    raw: data,
+  }
 }
