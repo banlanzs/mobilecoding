@@ -7,9 +7,9 @@ build: build-web build-go
 build-web:
 	cd web && npm run build
 
-# 构建后端
+# 构建后端（版本号从 git tag 注入）
 build-go:
-	go build -o dist/mobilecoding.exe ./cmd/server
+	go build -ldflags "-X main.version=$$(git describe --tags --always 2>/dev/null || echo dev)" -o dist/mobilecoding.exe ./cmd/server
 
 # 清理构建产物
 clean:

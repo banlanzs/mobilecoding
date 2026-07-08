@@ -10,9 +10,8 @@ const ext = platform === 'win32' ? '.exe' : '';
 
 // 尝试多个可能的路径
 const possiblePaths = [
-  path.join(__dirname, '..', 'dist', `mobilecoding-${platform}-${arch}${ext}`),
   path.join(__dirname, '..', 'dist', `mobilecoding${ext}`),
-  path.join(__dirname, `mobilecoding${ext}`),
+  path.join(__dirname, '..', 'dist', `mobilecoding-${platform}-${arch}${ext}`),
 ];
 
 let binary = null;
@@ -24,7 +23,9 @@ for (const p of possiblePaths) {
 }
 
 if (!binary) {
-  console.error('mobilecoding binary not found. Please run: npm run build');
+  console.error('mobilecoding binary not found.');
+  console.error('If installed via npm, the postinstall script may have failed.');
+  console.error('You can manually download from: https://github.com/banlanzs/mobilecoding/releases');
   process.exit(1);
 }
 

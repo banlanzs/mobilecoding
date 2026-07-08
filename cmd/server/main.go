@@ -29,7 +29,9 @@ import (
 	"github.com/banlanzs/mobilecoding/internal/ws"
 )
 
-const version = "0.1.0"
+// version 由 CI/Makefile 通过 -ldflags 注入（从 git tag 取）；
+// 本地直接 go build 时为 "dev"。
+var version = "dev"
 
 //go:embed web/*
 var webAssets embed.FS
