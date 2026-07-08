@@ -1,6 +1,6 @@
 {
   "name": "@banlan/mobilecoding",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "description": "AI CLI 远程控制台 — 手机接管本机 Claude / Codex 会话",
   "main": "bin/mobilecoding.js",
   "bin": {
