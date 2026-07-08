@@ -1,13 +1,15 @@
 name: Release
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'app-v*']
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # service 二进制：仅 v* tag 触发（排除 app-v*）
+    if: ${{ !startsWith(github.ref_name, 'app-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,4 +57,102 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          fail_on_unmatched_files: false
+
+  android:
+    # APK：仅 app-v* tag 触发
+    if: ${{ startsWith(github.ref_name, 'app-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check keystore secret
+        id: has_key
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "RELEASE_KEYSTORE secret 未配置，跳过 APK 构建"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.has_key.outputs.skip != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.has_key.outputs.skip != 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        if: steps.has_key.outputs.skip != 'true'
+        run: |
+          cd mobile
+          npm ci
+
+      - uses: actions/setup-java@v4
+        if: steps.has_key.outputs.skip != 'true'
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        if: steps.has_key.outputs.skip != 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.1.12297006
+
+      - name: Decode release keystore
+        if: steps.has_key.outputs.skip != 'true'
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE }}
+        run: |
+          echo "$RELEASE_KEYSTORE" | base64 -d > mobile/android/app/release.keystore
+          test -s mobile/android/app/release.keystore
+
+      - name: Derive version from tag
+        if: steps.has_key.outputs.skip != 'true'
+        id: ver
+        run: |
+          # app-v0.4.0 -> 0.4.0
+          TAG="${GITHUB_REF_NAME#app-v}"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          # versionCode：major*10000 + minor*100 + patch，保证单调递增不冲突
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$TAG"
+          MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+          CODE=$((MAJOR*10000 + MINOR*100 + PATCH))
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK (arm64-v8a)
+        if: steps.has_key.outputs.skip != 'true'
+        env:
+          RELEASE_STORE_FILE: release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          VERSION_NAME: ${{ steps.ver.outputs.name }}
+          VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          cd mobile/android
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+          mv app/build/outputs/apk/release/app-release.apk \
+             ${{ github.workspace }}/mobilecoding-android-arm64-v8a.apk
+
+      - name: Create checksums
+        if: steps.has_key.outputs.skip != 'true'
+        run: |
+          sha256sum mobilecoding-android-arm64-v8a.apk > mobilecoding-android-arm64-v8a.apk.sha256
+
+      - name: Upload APK to release
+        if: steps.has_key.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            mobilecoding-android-arm64-v8a.apk
+            mobilecoding-android-arm64-v8a.apk.sha256
           fail_on_unmatched_files: false
