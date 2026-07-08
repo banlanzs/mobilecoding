@@ -83,8 +83,12 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI 通过环境变量注入版本号（从 git tag 推导）；本地 fallback 到 1.0
-        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
-        versionName System.getenv("VERSION_NAME") ?: "1.0"
+        def vCode = System.getenv("VERSION_CODE")
+        def vName = System.getenv("VERSION_NAME")
+        def code = (vCode != null && !vCode.isEmpty()) ? vCode.toInteger() : 1
+        def name = (vName != null && !vName.isEmpty()) ? vName : "1.0"
+        versionCode code
+        versionName name
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {
