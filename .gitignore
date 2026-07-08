@@ -4,6 +4,8 @@
 *.key
 *.p12
 *.crt
+*.keystore
+*.b64
 
 # 构建产物
 dist/
